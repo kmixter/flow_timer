@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as path;
 import 'package:watcher/watcher.dart';
 import 'drive_sync.dart';
-import 'notes_file.dart';
+import 'project_file.dart';
 import 'task.dart';
 
 final Logger _logger = Logger('main');
@@ -51,9 +51,9 @@ class _MyHomePageState extends State<MyHomePage>
   final List<TextEditingController> _controllers = [];
   final List<FocusNode> _focusNodes = [];
   bool _hasChanges = false;
-  List<File> _noteFiles = [];
+  List<File> _projectFiles = [];
   File? _selectedFile;
-  NotesFile? _notesFile;
+  ProjectFile? _projectFile;
   DateTime? _selectedDate;
   final TextEditingController _notesController = TextEditingController();
   FileWatcher? _fileWatcher;
@@ -63,7 +63,7 @@ class _MyHomePageState extends State<MyHomePage>
   void initState() {
     super.initState();
     _initDriveSync();
-    _loadNoteFiles();
+    _loadProjectFiles();
     _pickSelectedFileBasedOnCwd();
     _notesController.addListener(() {
       setState(() {
@@ -88,26 +88,29 @@ class _MyHomePageState extends State<MyHomePage>
       _fileWatcher = FileWatcher(_selectedFile!.path);
       _fileWatcher!.events.listen((event) {
         if (event.type == ChangeType.MODIFY) {
-          _loadNotes(_selectedFile);
+          _loadProject(_selectedFile);
         }
       });
     }
   }
 
-  Future<void> _loadNoteFiles() async {
+  Future<void> _loadProjectFiles() async {
     final homeDir = Directory(path.join(Platform.environment['HOME']!, 'prj'));
     final directories = homeDir.listSync().whereType<Directory>();
-    final noteFiles = directories
-        .map((dir) => File(path.join(dir.path, 'notes.txt')))
+    final projectFiles = directories
+        .expand((dir) => [
+              File(path.join(dir.path, 'notes.txt')),
+              File(path.join(dir.path, 'project.txt'))
+            ])
         .where((file) => file.existsSync())
         .toList();
 
     setState(() {
-      _noteFiles = noteFiles;
+      _projectFiles = projectFiles;
       // Re-select the file if it still exists.
       if (_selectedFile != null) {
-        _selectedFile =
-            _noteFiles.firstWhere((file) => file.path == _selectedFile!.path);
+        _selectedFile = _projectFiles
+            .firstWhere((file) => file.path == _selectedFile!.path);
       }
     });
   }
@@ -115,39 +118,39 @@ class _MyHomePageState extends State<MyHomePage>
   void _pickSelectedFileBasedOnCwd() {
     final currentDir = Directory.current;
     try {
-      File matchingFile = _noteFiles.firstWhere(
+      File matchingFile = _projectFiles.firstWhere(
         (file) => currentDir.path.startsWith(path.dirname(file.path)),
       );
-      _loadNotes(matchingFile);
+      _loadProject(matchingFile);
     } on StateError {
       // No matching file found.
     }
   }
 
-  Future<void> _loadNotes(File? file) async {
+  Future<void> _loadProject(File? file) async {
     if (file == null) {
       setState(() {
         _selectedFile = null;
         _controllers.clear();
-        _notesFile = null;
+        _projectFile = null;
         _selectedDate = null;
       });
       return;
     }
-    _logger.info('Loading notes from ${file.path}');
+    _logger.info('Loading project from ${file.path}');
     final content = await file.readAsString();
-    final notesFile = NotesFile();
-    await notesFile.parse(content);
+    final projectFile = ProjectFile();
+    await projectFile.parse(content);
 
     final currentDate = DateTime.now();
-    if (notesFile.regions.isEmpty) {
-      notesFile.createRegion(currentDate);
+    if (projectFile.regions.isEmpty) {
+      projectFile.createRegion(currentDate);
     }
 
     setState(() {
       _selectedFile = file;
-      _notesFile = notesFile;
-      _selectedDate = notesFile.getDates().last;
+      _projectFile = projectFile;
+      _selectedDate = projectFile.getDates().last;
       _populateTabsForSelectedDate();
     });
 
@@ -155,8 +158,8 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   void _populateTabsForSelectedDate() {
-    if (_notesFile == null || _selectedDate == null) return;
-    final region = _notesFile!.getRegion(_selectedDate!);
+    if (_projectFile == null || _selectedDate == null) return;
+    final region = _projectFile!.getRegion(_selectedDate!);
     final tasks = region.tasks;
     final notes = region.getNotesString();
     setState(() {
@@ -201,7 +204,7 @@ class _MyHomePageState extends State<MyHomePage>
     String? totalsAnnotation;
     if (_selectedDate != null) {
       totalsAnnotation =
-          _notesFile?.getRegion(_selectedDate!).getTotalsAnnotation();
+          _projectFile?.getRegion(_selectedDate!).getTotalsAnnotation();
     }
     return totalsAnnotation != null ? 'Tasks ($totalsAnnotation)' : 'Tasks';
   }
@@ -223,7 +226,7 @@ class _MyHomePageState extends State<MyHomePage>
     );
   }
 
-  Future<void> _saveNotes() async {
+  Future<void> _saveProject() async {
     if (_selectedFile == null) {
       while (true) {
         final directory = await FilePicker.platform.getDirectoryPath();
@@ -235,30 +238,31 @@ class _MyHomePageState extends State<MyHomePage>
               'Please select a directory directly under $requiredPath.');
           continue;
         }
-        final newFile = File(path.join(directory, 'notes.txt'));
+        final newFile = File(path.join(directory, 'project.txt'));
         if (await newFile.exists()) {
           await _showFailedToSelectDirectoryDialog('File Already Exists',
-              'A notes.txt file already exists in the selected directory. Please choose a different directory.');
+              'A project.txt file already exists in the selected directory. Please choose a different directory.');
           continue;
         }
         _selectedFile = newFile;
         break;
       }
     }
-    _logger.info('Saving notes to ${_selectedFile!.path}');
-    final region = _notesFile!.getRegion(_selectedDate!);
+    _logger.info('Saving project to ${_selectedFile!.path}');
+    final region = _projectFile!.getRegion(_selectedDate!);
     region.tasks = _controllers
         .map((controller) => Task.fromLine(controller.text))
         .toList();
     region.setNotesFromString(_notesController.text);
-    final contents = _notesFile!.toString();
+    final contents = _projectFile!.toString();
     await _selectedFile!.writeAsString(contents);
-    String notesDescriptor = _driveSync.getNotesDescriptor(_selectedFile!.path);
-    await _driveSync.syncNotesToDrive(notesDescriptor, contents);
+    String projectDescriptor =
+        _driveSync.getProjectDescriptor(_selectedFile!.path);
+    await _driveSync.syncProjectToDrive(projectDescriptor, contents);
     setState(() {
       _hasChanges = false;
     });
-    _loadNoteFiles(); // Reload the dropdown with available files
+    _loadProjectFiles(); // Reload the dropdown with available files
   }
 
   void _addNewItem() {
@@ -280,7 +284,7 @@ class _MyHomePageState extends State<MyHomePage>
         onKey: (event) {
           if (event.isControlPressed && event.logicalKey.keyLabel == 'S') {
             if (_hasChanges) {
-              _saveNotes();
+              _saveProject();
             }
           }
         },
@@ -292,8 +296,8 @@ class _MyHomePageState extends State<MyHomePage>
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                      _driveSync.getNotesDescriptor(_selectedFile?.path ?? '')),
+                  Text(_driveSync
+                      .getProjectDescriptor(_selectedFile?.path ?? '')),
                   if (_selectedDate != null)
                     Text(
                       DateFormat(defaultDateFormat).format(_selectedDate!),
@@ -311,7 +315,7 @@ class _MyHomePageState extends State<MyHomePage>
                   icon: const Icon(Icons.save),
                   onPressed: _hasChanges
                       ? () {
-                          _saveNotes();
+                          _saveProject();
                         }
                       : null,
                 ),
@@ -336,7 +340,7 @@ class _MyHomePageState extends State<MyHomePage>
                   ListTile(
                     title: const Text('Regions'),
                   ),
-                  ...?_notesFile?.getDates().map((date) {
+                  ...?_projectFile?.getDates().map((date) {
                     return ListTile(
                       title: Text(DateFormat(defaultDateFormat).format(date)),
                       selected: _selectedDate == date,
@@ -366,15 +370,15 @@ class _MyHomePageState extends State<MyHomePage>
                   ListTile(
                     title: const Text('Projects'),
                   ),
-                  ..._noteFiles.map((file) {
+                  ..._projectFiles.map((file) {
                     return ListTile(
-                      title: Text(_driveSync.getNotesDescriptor(file.path)),
+                      title: Text(_driveSync.getProjectDescriptor(file.path)),
                       selected: _selectedFile == file,
                       selectedTileColor: Colors.yellow,
                       onTap: () {
                         setState(() {
                           _selectedFile = file;
-                          _loadNotes(file);
+                          _loadProject(file);
                           Navigator.pop(context); // Close the drawer
                         });
                       },
@@ -387,7 +391,7 @@ class _MyHomePageState extends State<MyHomePage>
                     onTap: () {
                       setState(() {
                         _selectedFile = null;
-                        _loadNotes(null);
+                        _loadProject(null);
                         Navigator.pop(context); // Close the drawer
                       });
                     },

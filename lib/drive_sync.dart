@@ -130,13 +130,14 @@ class DriveSync {
     }
   }
 
-  Future<void> syncNotesToDrive(String notesDescriptor, String contents) async {
+  Future<void> syncProjectToDrive(
+      String projectDescriptor, String contents) async {
     if (driveFolderId == null) {
       _logger.info('Not logged in. Cannot save to Drive.');
       return;
     }
 
-    final fileName = '$notesDescriptor.txt';
+    final fileName = '$projectDescriptor.txt';
     final headers = {
       'Authorization': 'Bearer ${oauth2Client!.credentials.accessToken}',
       'Content-Type': 'application/json',
@@ -260,9 +261,8 @@ $contents
       final driveFileName = file['name'];
       _logger.fine('Considering Drive file: $driveFileName');
       _logger.fine('All Drive metadata is: $file');
-      final localFilePath = _getNotesPathFromDriveFileName(driveFileName);
+      final localFilePath = _getProjectPathFromDriveFileName(driveFileName);
       _logger.fine('Equivalent local path: $localFilePath');
-      final localFile = File(localFilePath);
 
       final driveFileResponse = await http.get(
         Uri.parse(
@@ -280,6 +280,12 @@ $contents
       final driveFileModifiedTime =
           DateTime.parse(driveFileMetadata['modifiedTime']);
 
+      var localFile = File(path.join(localFilePath, 'project.txt'));
+
+      if (!await localFile.exists()) {
+        localFile = File(path.join(localFilePath, 'notes.txt'));
+      }
+
       if (await localFile.exists()) {
         final localFileModifiedTime = await localFile.lastModified();
         _logger.info(
@@ -290,7 +296,7 @@ $contents
           modifiedPaths.add(localFilePath);
         } else {
           _logger.info(
-              'Local file is newer than drive, letting using manually save');
+              'Local file is newer than drive, letting user manually save');
         }
       } else {
         await _createParentDirectories(localFilePath);
@@ -318,19 +324,18 @@ $contents
     }
   }
 
-  String getNotesDescriptor(String filepath) {
+  String getProjectDescriptor(String filepath) {
     return path.basename(path.dirname(filepath));
   }
 
-  String _getNotesPath(String descriptor) {
-    return path.join(
-        Platform.environment['HOME']!, 'prj', descriptor, 'notes.txt');
+  String _getProjectPath(String descriptor) {
+    return path.join(Platform.environment['HOME']!, 'prj', descriptor);
   }
 
-  String _getNotesPathFromDriveFileName(String driveFileName) {
+  String _getProjectPathFromDriveFileName(String driveFileName) {
     final descriptor = driveFileName.endsWith('.txt')
         ? driveFileName.substring(0, driveFileName.length - 4)
         : driveFileName;
-    return _getNotesPath(descriptor);
+    return _getProjectPath(descriptor);
   }
 }

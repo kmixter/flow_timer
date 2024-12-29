@@ -1,10 +1,10 @@
 import 'package:test/test.dart';
-import 'package:flow_timer/notes_file.dart';
+import 'package:flow_timer/project_file.dart';
 import 'package:flow_timer/task.dart';
 
 void main() {
-  group('NotesFile', () {
-    late NotesFile notesFile;
+  group('ProjectFile', () {
+    late ProjectFile projectFile;
     const testContent = '''
 Sun, Oct 1, 2023
 ----------------
@@ -25,17 +25,17 @@ Notes for 12/10.
 ''';
 
     setUp(() async {
-      notesFile = NotesFile();
-      await notesFile.parse(testContent);
+      projectFile = ProjectFile();
+      await projectFile.parse(testContent);
     });
 
     test('parse and getDates', () {
-      final dates = notesFile.getDates();
+      final dates = projectFile.getDates();
       expect(dates, [DateTime(2023, 10, 1), DateTime(2024, 12, 10)]);
     });
 
     test('getTasksForDate', () {
-      final region = notesFile.getRegion(DateTime(2023, 10, 1));
+      final region = projectFile.getRegion(DateTime(2023, 10, 1));
       final tasks = region.tasks;
       expect(tasks.length, 2);
       expect(tasks[0].desc, 'Task 1');
@@ -43,25 +43,25 @@ Notes for 12/10.
     });
 
     test('getNotesForDate', () {
-      final region = notesFile.getRegion(DateTime(2023, 10, 1));
+      final region = projectFile.getRegion(DateTime(2023, 10, 1));
       final notes = region.getNotesString();
       expect(notes, 'Notes for 2023-10-01\n');
     });
 
     test('Check toString returns what was parsed', () {
-      final newContent = notesFile.toString();
+      final newContent = projectFile.toString();
       expect(newContent, testContent);
     });
 
     test('replaceTasksForDate', () async {
-      final region = notesFile.getRegion(DateTime(2023, 10, 1));
+      final region = projectFile.getRegion(DateTime(2023, 10, 1));
       region.tasks = [
         Task(dayNumber: 0, desc: 'New Task 1'),
         Task(dayNumber: 1, desc: 'New Task 2'),
       ];
-      final newContent = notesFile.toString();
-      await notesFile.parse(newContent);
-      final updatedRegion = notesFile.getRegion(DateTime(2023, 10, 1));
+      final newContent = projectFile.toString();
+      await projectFile.parse(newContent);
+      final updatedRegion = projectFile.getRegion(DateTime(2023, 10, 1));
       final tasks = updatedRegion.tasks;
       expect(tasks.length, 2);
       expect(tasks[0].desc, 'New Task 1');
@@ -69,30 +69,30 @@ Notes for 12/10.
     });
 
     test('replaceNotesForDate', () async {
-      final region = notesFile.getRegion(DateTime(2023, 10, 1));
+      final region = projectFile.getRegion(DateTime(2023, 10, 1));
       region.setNotesFromString('New notes for 2023-10-01\n');
-      final newContent = notesFile.toString();
-      await notesFile.parse(newContent);
-      final updatedRegion = notesFile.getRegion(DateTime(2023, 10, 1));
+      final newContent = projectFile.toString();
+      await projectFile.parse(newContent);
+      final updatedRegion = projectFile.getRegion(DateTime(2023, 10, 1));
       final notes = updatedRegion.getNotesString();
       expect(notes, 'New notes for 2023-10-01\n');
     });
 
     test('test reading empty file', () async {
-      final emptyFile = NotesFile();
+      final emptyFile = ProjectFile();
       await emptyFile.parse('');
       expect(emptyFile.regions.isEmpty, true);
     });
 
     test('test writing empty file', () async {
-      final emptyFile = NotesFile();
+      final emptyFile = ProjectFile();
       await emptyFile.parse('');
       final newContent = emptyFile.toString();
       expect(newContent, '');
     });
 
     test('test writing file with 2 empty regions', () async {
-      final emptyFile = NotesFile();
+      final emptyFile = ProjectFile();
       emptyFile.createRegion(DateTime(2023, 10, 1));
       emptyFile.createRegion(DateTime(2023, 10, 2));
       final newContent = emptyFile.toString();
@@ -101,7 +101,7 @@ Notes for 12/10.
     });
 
     test('test reading file with 2 empty regions', () async {
-      final emptyFile = NotesFile();
+      final emptyFile = ProjectFile();
       await emptyFile
           .parse('2023-10-01\n----------\n\n2023-10-02\n----------\n\n');
       expect(emptyFile.regions.length, 2);
@@ -112,7 +112,7 @@ Notes for 12/10.
     });
 
     test('test writing empty tasks', () async {
-      final justNotes = NotesFile();
+      final justNotes = ProjectFile();
       final region = justNotes.createRegion(DateTime(2023, 10, 1));
       region.setNotesFromString('hi there, this is a note');
       final newContent = justNotes.toString();
@@ -121,7 +121,7 @@ Notes for 12/10.
     });
 
     test('test reading empty tasks', () async {
-      final justNotes = NotesFile();
+      final justNotes = ProjectFile();
       await justNotes
           .parse('2023-10-01\n----------\nhi there, this is a note\n\n');
       expect(justNotes.regions.length, 1);
@@ -131,7 +131,7 @@ Notes for 12/10.
     });
 
     test('test adding first todo', () async {
-      final justNotes = NotesFile();
+      final justNotes = ProjectFile();
       final region = justNotes.createRegion(DateTime(2023, 10, 1));
       region.tasks.add(Task(dayNumber: 0, desc: 'First Task'));
       final newContent = justNotes.toString();
@@ -140,7 +140,7 @@ Notes for 12/10.
     });
 
     test('test recompute day of week order', () async {
-      final notes = NotesFile();
+      final notes = ProjectFile();
       final region = notes.createRegion(DateTime(2023, 10, 1));
       region.tasks.add(Task(dayNumber: 1, desc: 'Second Task'));
       region.tasks.add(Task(dayNumber: 0, desc: 'FIrst Task'));
@@ -154,7 +154,7 @@ Notes for 12/10.
     });
 
     test('test recompute pending by completion rate', () async {
-      final notes = NotesFile();
+      final notes = ProjectFile();
       final region = notes.createRegion(DateTime(2023, 10, 1));
       region.tasks.add(Task(
           dayNumber: -1,

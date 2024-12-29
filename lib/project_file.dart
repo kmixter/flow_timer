@@ -5,7 +5,7 @@ const String defaultDateFormat = 'EEE, MMM d, yyyy';
 
 enum ParseState { beginRegion, readingTodos, readingNotes }
 
-class NotesFile {
+class ProjectFile {
   final List<NotesRegion> regions = [];
 
   Future<void> parse(String content) async {
@@ -202,7 +202,8 @@ class NotesRegion {
       }
     }
 
-    pending.sort((a, b) => _getPendingTaskPriority(b) > _getPendingTaskPriority(a) ? 1 : -1);
+    pending.sort((a, b) =>
+        _getPendingTaskPriority(b) > _getPendingTaskPriority(a) ? 1 : -1);
 
     final sortedTasks = <Task>[];
     sortedTasks.addAll(pending);
