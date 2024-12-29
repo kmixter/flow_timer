@@ -1,16 +1,18 @@
 # flow_timer
 
-A new Flutter project.
+A text-todos compliant flutter app. See the vscode text-todos
+extension for more details of this file format.
 
-## Getting Started
+# Dependencies
 
-This project is a starting point for a Flutter application.
+On Linux:
 
-A few resources to get you started if this is your first Flutter project:
+sudo apt-get install zenity
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+You will need to create an appopriate Google Cloud project with drive.file permission
+which is required for cloud synchronizing.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Download the configuration json file from Google Cloud OAUTH2 configuration and store
+it in assets/client_secret.json.
+
+It is recommended you save this file in Google Drive as something like completion-rate-client_secret.json for save keeping.
