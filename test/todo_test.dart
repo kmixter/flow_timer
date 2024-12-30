@@ -41,7 +41,7 @@ void main() {
 
     test('parse() and toLine() - TODO with all annotations', () {
       const line =
-          '* This is a TODO with all bells and whistles 76m +2hr <=12/31 ## @8:56 10m/d';
+          '* This is a TODO with all bells and whistles 76m +2hr <=12/31     ##@8:56 10m/d';
       final fixedDate = DateTime(2024, 12, 24, 8, 56);
       final todo = Todo.fromLine(line, now: fixedDate);
       expect(todo.dayNumber, -1);
@@ -52,6 +52,21 @@ void main() {
       expect(todo.spentMinutes, 120);
       expect(todo.daysLeft, 8);
       expect(todo.toLine(), line);
+    });
+
+    test('equals() - identical TODOs', () {
+      const line = 'M This is a TODO with a duration 30m';
+      final todo1 = Todo.fromLine(line);
+      final todo2 = Todo.fromLine(line);
+      expect(todo1.equals(todo2), isTrue);
+    });
+
+    test('equals() - different TODOs', () {
+      const line1 = 'M This is a TODO with a duration 30m';
+      const line2 = 'T This is a different TODO with a duration 30m';
+      final todo1 = Todo.fromLine(line1);
+      final todo2 = Todo.fromLine(line2);
+      expect(todo1.equals(todo2), isFalse);
     });
   });
 }

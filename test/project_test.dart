@@ -1,10 +1,10 @@
 import 'package:test/test.dart';
-import 'package:flow_timer/project_file.dart';
+import 'package:flow_timer/project.dart';
 import 'package:flow_timer/todo.dart';
 
 void main() {
-  group('ProjectFile', () {
-    late ProjectFile projectFile;
+  group('Project', () {
+    late Project project;
     const testContent = '''
 Sun, Oct 1, 2023
 ----------------
@@ -25,17 +25,17 @@ Notes for 12/10.
 ''';
 
     setUp(() async {
-      projectFile = ProjectFile();
-      await projectFile.parse(testContent);
+      project = Project();
+      await project.parse(testContent);
     });
 
     test('parse and getDates', () {
-      final dates = projectFile.getWeeklies();
+      final dates = project.getWeeklies();
       expect(dates, [DateTime(2023, 10, 1), DateTime(2024, 12, 10)]);
     });
 
     test('getTasksForDate', () {
-      final weekly = projectFile.getWeekly(DateTime(2023, 10, 1));
+      final weekly = project.getWeekly(DateTime(2023, 10, 1));
       final tasks = weekly.todos;
       expect(tasks.length, 2);
       expect(tasks[0].desc, 'Task 1');
@@ -43,25 +43,25 @@ Notes for 12/10.
     });
 
     test('getNotesForDate', () {
-      final weekly = projectFile.getWeekly(DateTime(2023, 10, 1));
+      final weekly = project.getWeekly(DateTime(2023, 10, 1));
       final notes = weekly.getNotesString();
       expect(notes, 'Notes for 2023-10-01\n');
     });
 
     test('Check toString returns what was parsed', () {
-      final newContent = projectFile.toString();
+      final newContent = project.toString();
       expect(newContent, testContent);
     });
 
     test('replaceTasksForDate', () async {
-      final weekly = projectFile.getWeekly(DateTime(2023, 10, 1));
+      final weekly = project.getWeekly(DateTime(2023, 10, 1));
       weekly.todos = [
         Todo(dayNumber: 0, desc: 'New Task 1'),
         Todo(dayNumber: 1, desc: 'New Task 2'),
       ];
-      final newContent = projectFile.toString();
-      await projectFile.parse(newContent);
-      final updatedWeekly = projectFile.getWeekly(DateTime(2023, 10, 1));
+      final newContent = project.toString();
+      await project.parse(newContent);
+      final updatedWeekly = project.getWeekly(DateTime(2023, 10, 1));
       final tasks = updatedWeekly.todos;
       expect(tasks.length, 2);
       expect(tasks[0].desc, 'New Task 1');
@@ -69,50 +69,50 @@ Notes for 12/10.
     });
 
     test('replaceNotesForDate', () async {
-      final weekly = projectFile.getWeekly(DateTime(2023, 10, 1));
+      final weekly = project.getWeekly(DateTime(2023, 10, 1));
       weekly.setNotesFromString('New notes for 2023-10-01\n');
-      final newContent = projectFile.toString();
-      await projectFile.parse(newContent);
-      final updatedWeekly = projectFile.getWeekly(DateTime(2023, 10, 1));
+      final newContent = project.toString();
+      await project.parse(newContent);
+      final updatedWeekly = project.getWeekly(DateTime(2023, 10, 1));
       final notes = updatedWeekly.getNotesString();
       expect(notes, 'New notes for 2023-10-01\n');
     });
 
-    test('test reading empty file', () async {
-      final emptyFile = ProjectFile();
-      await emptyFile.parse('');
-      expect(emptyFile.weeklies.isEmpty, true);
+    test('test reading empty project', () async {
+      final emptyProject = Project();
+      await emptyProject.parse('');
+      expect(emptyProject.weeklies.isEmpty, true);
     });
 
-    test('test writing empty file', () async {
-      final emptyFile = ProjectFile();
-      await emptyFile.parse('');
-      final newContent = emptyFile.toString();
+    test('test writing empty project', () async {
+      final emptyProject = Project();
+      await emptyProject.parse('');
+      final newContent = emptyProject.toString();
       expect(newContent, '');
     });
 
-    test('test writing file with 2 empty weeklies', () async {
-      final emptyFile = ProjectFile();
-      emptyFile.createWeekly(DateTime(2023, 10, 1));
-      emptyFile.createWeekly(DateTime(2023, 10, 2));
-      final newContent = emptyFile.toString();
+    test('test writing project with 2 empty weeklies', () async {
+      final emptyProject = Project();
+      emptyProject.createWeekly(DateTime(2023, 10, 1));
+      emptyProject.createWeekly(DateTime(2023, 10, 2));
+      final newContent = emptyProject.toString();
       expect(newContent,
           'Sun, Oct 1, 2023\n----------------\n\nMon, Oct 2, 2023\n----------------\n\n');
     });
 
-    test('test reading file with 2 empty weeklies', () async {
-      final emptyFile = ProjectFile();
-      await emptyFile
+    test('test reading project with 2 empty weeklies', () async {
+      final emptyProject = Project();
+      await emptyProject
           .parse('2023-10-01\n----------\n\n2023-10-02\n----------\n\n');
-      expect(emptyFile.weeklies.length, 2);
-      expect(emptyFile.weeklies[0].todos.isEmpty, true);
-      expect(emptyFile.weeklies[0].notes.isEmpty, true);
-      expect(emptyFile.weeklies[1].todos.isEmpty, true);
-      expect(emptyFile.weeklies[1].notes.isEmpty, true);
+      expect(emptyProject.weeklies.length, 2);
+      expect(emptyProject.weeklies[0].todos.isEmpty, true);
+      expect(emptyProject.weeklies[0].notes.isEmpty, true);
+      expect(emptyProject.weeklies[1].todos.isEmpty, true);
+      expect(emptyProject.weeklies[1].notes.isEmpty, true);
     });
 
-    test('test writing empty tasks', () async {
-      final justNotes = ProjectFile();
+    test('test writing empty todos', () async {
+      final justNotes = Project();
       final weekly = justNotes.createWeekly(DateTime(2023, 10, 1));
       weekly.setNotesFromString('hi there, this is a note');
       final newContent = justNotes.toString();
@@ -121,7 +121,7 @@ Notes for 12/10.
     });
 
     test('test reading empty tasks', () async {
-      final justNotes = ProjectFile();
+      final justNotes = Project();
       await justNotes
           .parse('2023-10-01\n----------\nhi there, this is a note\n\n');
       expect(justNotes.weeklies.length, 1);
@@ -131,7 +131,7 @@ Notes for 12/10.
     });
 
     test('test adding first todo', () async {
-      final justNotes = ProjectFile();
+      final justNotes = Project();
       final weekly = justNotes.createWeekly(DateTime(2023, 10, 1));
       weekly.todos.add(Todo(dayNumber: 0, desc: 'First Task'));
       final newContent = justNotes.toString();
@@ -140,7 +140,7 @@ Notes for 12/10.
     });
 
     test('test recompute day of week order', () async {
-      final notes = ProjectFile();
+      final notes = Project();
       final weekly = notes.createWeekly(DateTime(2023, 10, 1));
       weekly.todos.add(Todo(dayNumber: 1, desc: 'Second Task'));
       weekly.todos.add(Todo(dayNumber: 0, desc: 'FIrst Task'));
@@ -154,7 +154,7 @@ Notes for 12/10.
     });
 
     test('test recompute pending by completion rate', () async {
-      final notes = ProjectFile();
+      final notes = Project();
       final weekly = notes.createWeekly(DateTime(2023, 10, 1));
       weekly.todos.add(Todo(
           dayNumber: -1,

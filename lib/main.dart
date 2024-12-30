@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as path;
 import 'package:watcher/watcher.dart';
 import 'drive_sync.dart';
-import 'project_file.dart';
+import 'project.dart';
 import 'todo.dart';
 
 final Logger _logger = Logger('main');
@@ -48,13 +48,13 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage>
     with SingleTickerProviderStateMixin {
-  final List<TextEditingController> _controllers = [];
-  final List<FocusNode> _focusNodes = [];
-  bool _hasChanges = false;
   List<File> _projectFiles = [];
-  File? _selectedFile;
-  ProjectFile? _projectFile;
-  DateTime? _selectedDate;
+  File? _projectFile;
+  Project? _project;
+  Weekly? _weekly;
+  bool _hasChanges = false;
+  final List<FocusNode> _focusNodes = [];
+  final List<TextEditingController> _todoControllers = [];
   final TextEditingController _notesController = TextEditingController();
   FileWatcher? _fileWatcher;
   late DriveSync _driveSync;
@@ -63,13 +63,8 @@ class _MyHomePageState extends State<MyHomePage>
   void initState() {
     super.initState();
     _initDriveSync();
-    _loadProjectFiles();
-    _pickSelectedFileBasedOnCwd();
-    _notesController.addListener(() {
-      setState(() {
-        _hasChanges = true;
-      });
-    });
+    _findProjectFiles();
+    _pickInitialProject();
   }
 
   Future<void> _initDriveSync() async {
@@ -84,17 +79,17 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   void _initializeFileWatcher() {
-    if (_selectedFile != null) {
-      _fileWatcher = FileWatcher(_selectedFile!.path);
+    if (_projectFile != null) {
+      _fileWatcher = FileWatcher(_projectFile!.path);
       _fileWatcher!.events.listen((event) {
         if (event.type == ChangeType.MODIFY) {
-          _loadProject(_selectedFile);
+          _loadProject(_projectFile!);
         }
       });
     }
   }
 
-  Future<void> _loadProjectFiles() async {
+  Future<void> _findProjectFiles() async {
     final homeDir = Directory(path.join(Platform.environment['HOME']!, 'prj'));
     final directories = homeDir.listSync().whereType<Directory>();
     final projectFiles = directories
@@ -108,73 +103,97 @@ class _MyHomePageState extends State<MyHomePage>
     setState(() {
       _projectFiles = projectFiles;
       // Re-select the file if it still exists.
-      if (_selectedFile != null) {
-        _selectedFile = _projectFiles
-            .firstWhere((file) => file.path == _selectedFile!.path);
+      if (_projectFile != null) {
+        _projectFile =
+            _projectFiles.firstWhere((file) => file.path == _projectFile!.path);
       }
     });
   }
 
-  void _pickSelectedFileBasedOnCwd() {
+  Future<void> _pickInitialProject() async {
     final currentDir = Directory.current;
     try {
       File matchingFile = _projectFiles.firstWhere(
         (file) => currentDir.path.startsWith(path.dirname(file.path)),
       );
       _loadProject(matchingFile);
+      return;
     } on StateError {
       // No matching file found.
     }
+    await _promptProjectFileSelection(false);
   }
 
-  Future<void> _loadProject(File? file) async {
-    if (file == null) {
-      setState(() {
-        _selectedFile = null;
-        _controllers.clear();
-        _projectFile = null;
-        _selectedDate = null;
-      });
-      return;
+  Future<void> _promptProjectFileSelection(bool allowDismiss) async {
+    while (true) {
+      final directory = await FilePicker.platform.getDirectoryPath();
+      if (directory == null) {
+        if (allowDismiss) {
+          return;
+        }
+        await _showFailedToSelectDirectoryDialog(
+            'Must choose', 'You must select a directory to continue.');
+        continue;
+      }
+      String requiredPath = path.join(Platform.environment['HOME']!, 'prj');
+
+      if (!directory.startsWith(requiredPath) || directory == requiredPath) {
+        await _showFailedToSelectDirectoryDialog('Invalid Directory',
+            'Please select a directory directly under $requiredPath.');
+        continue;
+      }
+      final newFile = File(path.join(directory, 'project.txt'));
+      if (await newFile.exists()) {
+        await _showFailedToSelectDirectoryDialog('File Already Exists',
+            'A project.txt file already exists in the selected directory. Please choose a different directory.');
+        continue;
+      }
+      _projectFile = newFile;
+      break;
     }
+    _loadProject(_projectFile!);
+  }
+
+  Future<void> _loadProject(File file) async {
     _logger.info('Loading project from ${file.path}');
     final content = await file.readAsString();
-    final projectFile = ProjectFile();
-    await projectFile.parse(content);
+    final project = Project();
+    await project.parse(content);
+    project.recompute();
 
     final currentDate = DateTime.now();
-    if (projectFile.weeklies.isEmpty) {
-      projectFile.createWeekly(currentDate);
+    if (project.weeklies.isEmpty) {
+      project.createWeekly(currentDate);
     }
 
     setState(() {
-      _selectedFile = file;
-      _projectFile = projectFile;
-      _selectedDate = projectFile.getWeeklies().last;
-      _populateTabsForSelectedDate();
+      _projectFile = file;
+      _project = project;
+      _weekly = project.weeklies.last;
+      _populateTabsForSelectedWeekly();
     });
 
     _initializeFileWatcher();
   }
 
-  void _populateTabsForSelectedDate() {
-    if (_projectFile == null || _selectedDate == null) return;
-    final weekly = _projectFile!.getWeekly(_selectedDate!);
-    final todos = weekly.todos;
-    final notes = weekly.getNotesString();
+  void _populateTabsForSelectedWeekly() {
+    if (_project == null || _weekly == null) return;
+    final todos = _weekly!.todos;
+    final notes = _weekly!.getNotesString();
     setState(() {
-      _controllers.clear();
+      _todoControllers.clear();
       _focusNodes.clear();
       for (var todo in todos) {
-        _setTodoControllerAndFocusNode(null, todo.toLine());
+        _addTodoControllerAndFocusNode(todo.toLine());
       }
       _notesController.text = notes;
     });
   }
 
-  void _setTodoControllerAndFocusNode(int? index, String text) {
+  void _addTodoControllerAndFocusNode(String text) {
     final controller = TextEditingController(text: text);
     final focusNode = FocusNode();
+    final newIndex = _todoControllers.length;
     focusNode.addListener(() {
       if (focusNode.hasFocus) return;
       final text = controller.text.trim();
@@ -183,30 +202,30 @@ class _MyHomePageState extends State<MyHomePage>
         todo = Todo.fromLine(text);
       } catch (e) {
         todo = Todo(dayNumber: -1, desc: text);
-        controller.text = todo.toLine();
-        controller.selection = TextSelection.fromPosition(
-            TextPosition(offset: controller.text.length));
-        setState(() {
-          _hasChanges = true;
-        });
       }
-    });
-    if (index != null) {
-      _controllers[index] = controller;
-      _focusNodes[index] = focusNode;
-    } else {
-      _controllers.add(controller);
-      _focusNodes.add(focusNode);
-    }
-  }
+      bool needsRecompute = false;
+      if (newIndex == _weekly!.todos.length) {
+        _weekly!.todos.add(todo);
+        needsRecompute = true;
+      }
+      if (!_weekly!.todos[newIndex].equals(todo)) {
+        _weekly!.todos[newIndex] = todo;
+        needsRecompute = true;
+      }
+      if (!needsRecompute) {
+        return;
+      }
 
-  String getTodosTabText() {
-    String? totalsAnnotation;
-    if (_selectedDate != null) {
-      totalsAnnotation =
-          _projectFile?.getWeekly(_selectedDate!).getTotalsAnnotation();
-    }
-    return totalsAnnotation != null ? 'Todos ($totalsAnnotation)' : 'Todos';
+      _weekly!.recompute();
+      for (var i = 0; i < _todoControllers.length; i++) {
+        _todoControllers[i].text = _weekly!.todos[i].toLine();
+      }
+      setState(() {
+        _hasChanges = true;
+      });
+    });
+    _todoControllers.add(controller);
+    _focusNodes.add(focusNode);
   }
 
   Future<void> _showFailedToSelectDirectoryDialog(
@@ -227,47 +246,22 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   Future<void> _saveProject() async {
-    if (_selectedFile == null) {
-      while (true) {
-        final directory = await FilePicker.platform.getDirectoryPath();
-        if (directory == null) return; // User canceled the picker
-        String requiredPath = path.join(Platform.environment['HOME']!, 'prj');
-
-        if (!directory.startsWith(requiredPath) || directory == requiredPath) {
-          await _showFailedToSelectDirectoryDialog('Invalid Directory',
-              'Please select a directory directly under $requiredPath.');
-          continue;
-        }
-        final newFile = File(path.join(directory, 'project.txt'));
-        if (await newFile.exists()) {
-          await _showFailedToSelectDirectoryDialog('File Already Exists',
-              'A project.txt file already exists in the selected directory. Please choose a different directory.');
-          continue;
-        }
-        _selectedFile = newFile;
-        break;
-      }
-    }
-    _logger.info('Saving project to ${_selectedFile!.path}');
-    final weekly = _projectFile!.getWeekly(_selectedDate!);
-    weekly.todos = _controllers
-        .map((controller) => Todo.fromLine(controller.text))
-        .toList();
-    weekly.setNotesFromString(_notesController.text);
-    final contents = _projectFile!.toString();
-    await _selectedFile!.writeAsString(contents);
+    _logger.info('Saving project to ${_projectFile!.path}');
+    _weekly!.setNotesFromString(_notesController.text);
+    final contents = _project!.toString();
+    await _projectFile!.writeAsString(contents);
     String projectDescriptor =
-        _driveSync.getProjectDescriptor(_selectedFile!.path);
+        _driveSync.getProjectDescriptor(_projectFile!.path);
     await _driveSync.syncProjectToDrive(projectDescriptor, contents);
     setState(() {
       _hasChanges = false;
     });
-    _loadProjectFiles(); // Reload the dropdown with available files
+    _findProjectFiles(); // Reload the dropdown with available files
   }
 
   void _addNewItem() {
     setState(() {
-      _setTodoControllerAndFocusNode(null, '');
+      _addTodoControllerAndFocusNode('');
       _hasChanges = true;
     });
   }
@@ -297,10 +291,10 @@ class _MyHomePageState extends State<MyHomePage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(_driveSync
-                      .getProjectDescriptor(_selectedFile?.path ?? '')),
-                  if (_selectedDate != null)
+                      .getProjectDescriptor(_projectFile?.path ?? '')),
+                  if (_weekly != null)
                     Text(
-                      DateFormat(defaultDateFormat).format(_selectedDate!),
+                      DateFormat(defaultDateFormat).format(_weekly!.date),
                       style:
                           TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
                     ),
@@ -340,32 +334,38 @@ class _MyHomePageState extends State<MyHomePage>
                   ListTile(
                     title: const Text('Weeklies'),
                   ),
-                  ...?_projectFile?.getWeeklies().map((date) {
+                  ...?_project?.getWeeklies().map((date) {
                     return ListTile(
                       title: Text(DateFormat(defaultDateFormat).format(date)),
-                      selected: _selectedDate == date,
+                      selected: _weekly?.date == date,
                       selectedTileColor: Colors.yellow,
                       onTap: () {
                         setState(() {
-                          _selectedDate = date;
-                          _populateTabsForSelectedDate();
+                          _weekly = _project?.weeklies
+                              .firstWhere((weekly) => weekly.date == date);
+                          _populateTabsForSelectedWeekly();
                           Navigator.pop(context); // Close the drawer
                         });
                       },
                     );
                   }),
-                  ListTile(
-                    title: const Text('<create new weekly>'),
-                    selected: _selectedDate == DateTime.now(),
-                    selectedTileColor: Colors.yellow,
-                    onTap: () {
-                      setState(() {
-                        _selectedDate = DateTime.now();
-                        _populateTabsForSelectedDate();
-                        Navigator.pop(context); // Close the drawer
-                      });
-                    },
-                  ),
+                  if (_project?.weeklies
+                          .where((weekly) => weekly.date == DateTime.now())
+                          .isEmpty ??
+                      true)
+                    ListTile(
+                      title: const Text('Create New Weekly'),
+                      selected: _weekly?.date == DateTime.now(),
+                      selectedTileColor: Colors.yellow,
+                      onTap: () {
+                        setState(() {
+                          DateTime now = DateTime.now();
+                          _weekly = _project!.createWeekly(now);
+                          _populateTabsForSelectedWeekly();
+                          Navigator.pop(context); // Close the drawer
+                        });
+                      },
+                    ),
                   Divider(),
                   ListTile(
                     title: const Text('Projects'),
@@ -373,11 +373,11 @@ class _MyHomePageState extends State<MyHomePage>
                   ..._projectFiles.map((file) {
                     return ListTile(
                       title: Text(_driveSync.getProjectDescriptor(file.path)),
-                      selected: _selectedFile == file,
+                      selected: _projectFile == file,
                       selectedTileColor: Colors.yellow,
                       onTap: () {
                         setState(() {
-                          _selectedFile = file;
+                          _projectFile = file;
                           _loadProject(file);
                           Navigator.pop(context); // Close the drawer
                         });
@@ -385,13 +385,12 @@ class _MyHomePageState extends State<MyHomePage>
                     );
                   }),
                   ListTile(
-                    title: const Text('<create a new file>'),
-                    selected: _selectedFile == null,
+                    title: const Text('Create New Project'),
+                    selected: _projectFile == null,
                     selectedTileColor: Colors.yellow,
-                    onTap: () {
+                    onTap: () async {
+                      await _promptProjectFileSelection(true);
                       setState(() {
-                        _selectedFile = null;
-                        _loadProject(null);
                         Navigator.pop(context); // Close the drawer
                       });
                     },
@@ -403,22 +402,27 @@ class _MyHomePageState extends State<MyHomePage>
               children: [
                 Expanded(
                   child: ListView.builder(
-                    itemCount: _controllers.length + 1,
+                    itemCount: _todoControllers.length + 1,
                     itemBuilder: (context, index) {
-                      if (index < _controllers.length) {
+                      if (index < _todoControllers.length) {
+                        Todo? todo = index < _weekly!.todos.length
+                            ? _weekly!.todos[index]
+                            : null;
                         return Padding(
                           padding: const EdgeInsets.symmetric(
                               vertical: 0, horizontal: 8.0),
                           child: TextField(
-                            controller: _controllers[index],
+                            controller: _todoControllers[index],
                             focusNode: _focusNodes[index],
-                            decoration: InputDecoration(hintText: 'Enter todo'),
-                            style: TextStyle(fontSize: 24),
-                            onChanged: (newValue) {
-                              setState(() {
-                                _hasChanges = true;
-                              });
-                            },
+                            decoration: InputDecoration(
+                              hintText: 'Enter todo',
+                              filled: true,
+                              fillColor: todo != null && todo.startTime != null
+                                  ? Colors.green.withOpacity(0.3)
+                                  : null,
+                            ),
+                            style: TextStyle(
+                                fontSize: 20, fontFamily: 'monospace'),
                           ),
                         );
                       } else {
@@ -431,7 +435,13 @@ class _MyHomePageState extends State<MyHomePage>
                               hintText: 'Enter notes',
                               border: OutlineInputBorder(),
                             ),
-                            style: TextStyle(fontSize: 24),
+                            style: TextStyle(
+                                fontSize: 20, fontFamily: 'monospace'),
+                            onChanged: (newValue) {
+                              setState(() {
+                                _hasChanges = true;
+                              });
+                            },
                           ),
                         );
                       }
@@ -479,7 +489,7 @@ class _MyHomePageState extends State<MyHomePage>
   @override
   void dispose() {
     _fileWatcher = null;
-    for (var controller in _controllers) {
+    for (var controller in _todoControllers) {
       controller.dispose();
     }
     _notesController.dispose();

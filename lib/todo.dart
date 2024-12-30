@@ -134,7 +134,7 @@ class Todo {
       } else if (hasCompletionRate) {
         annotations.add('${formatMinutes(getCompletionRate())}/d');
       }
-      line = '$line ## ${annotations.join(' ')}';
+      line = '${line.padRight(65)} ##${annotations.join(' ')}';
     }
 
     return line;
@@ -163,5 +163,15 @@ class Todo {
 
   static bool isTodoLine(String line) {
     return RegExp(r'^[MTWRFSN\*] ').hasMatch(line);
+  }
+
+  bool equals(Todo other) {
+    return dayNumber == other.dayNumber &&
+        desc == other.desc &&
+        duration == other.duration &&
+        dueDate == other.dueDate &&
+        daysLeft == other.daysLeft &&
+        startTime == other.startTime &&
+        spentMinutes == other.spentMinutes;
   }
 }

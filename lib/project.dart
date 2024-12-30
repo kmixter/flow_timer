@@ -5,7 +5,7 @@ const String defaultDateFormat = 'EEE, MMM d, yyyy';
 
 enum ParseState { beginWeekly, readingTodos, readingNotes }
 
-class ProjectFile {
+class Project {
   final List<Weekly> weeklies = [];
 
   Future<void> parse(String content) async {
