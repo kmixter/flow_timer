@@ -3,20 +3,20 @@ import 'package:intl/intl.dart';
 
 const String defaultDateFormat = 'EEE, MMM d, yyyy';
 
-enum ParseState { beginRegion, readingTodos, readingNotes }
+enum ParseState { beginWeekly, readingTodos, readingNotes }
 
 class ProjectFile {
-  final List<NotesRegion> regions = [];
+  final List<Weekly> weeklies = [];
 
   Future<void> parse(String content) async {
     final lines = content.split('\n');
     if (lines.isNotEmpty && lines.last.isEmpty) {
       lines.removeLast();
     }
-    NotesRegion? currentRegion;
-    regions.clear();
+    Weekly? curentWeekly;
+    weeklies.clear();
 
-    ParseState state = ParseState.beginRegion;
+    ParseState state = ParseState.beginWeekly;
 
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
@@ -25,19 +25,19 @@ class ProjectFile {
       if (_isDateLine(line) &&
           i + 1 < lines.length &&
           _isSeparatorLine(lines[i + 1])) {
-        if (currentRegion != null) {
-          regions.add(currentRegion);
+        if (curentWeekly != null) {
+          weeklies.add(curentWeekly);
         }
-        currentRegion = NotesRegion(date: _parseDate(line)!);
+        curentWeekly = Weekly(date: _parseDate(line)!);
         ++i; // Skip the separator line.
-        state = ParseState.beginRegion;
+        state = ParseState.beginWeekly;
         continue;
       }
 
       switch (state) {
-        case ParseState.beginRegion:
+        case ParseState.beginWeekly:
           if (_isTodoLine(line)) {
-            currentRegion?.todoLine = line;
+            curentWeekly?.todoLine = line;
             state = ParseState.readingTodos;
           } else if (line.trim().isNotEmpty) {
             state = ParseState.readingNotes;
@@ -47,7 +47,7 @@ class ProjectFile {
 
         case ParseState.readingTodos:
           if (Task.isTodoLine(line)) {
-            currentRegion?.tasks.add(Task.fromLine(line));
+            curentWeekly?.tasks.add(Task.fromLine(line));
           } else {
             state = ParseState.readingNotes;
             i--; // Reprocess this line in the next state.
@@ -56,65 +56,65 @@ class ProjectFile {
 
         case ParseState.readingNotes:
           final trimmed = line.trim();
-          if (trimmed.isEmpty && currentRegion?.notes.isEmpty == true) {
+          if (trimmed.isEmpty && curentWeekly?.notes.isEmpty == true) {
             // Skip empty lines between tasks and notes.
             continue;
           }
-          currentRegion?.notes.add(line.trim());
+          curentWeekly?.notes.add(line.trim());
           break;
       }
     }
 
-    if (currentRegion != null) {
-      regions.add(currentRegion);
+    if (curentWeekly != null) {
+      weeklies.add(curentWeekly);
     }
 
     // Remove trailing empty note lines from all regions
-    for (var region in regions) {
+    for (var region in weeklies) {
       while (region.notes.isNotEmpty && region.notes.last.isEmpty) {
         region.notes.removeLast();
       }
     }
   }
 
-  List<DateTime> getDates() {
-    return regions.map((region) => region.date).toList();
+  List<DateTime> getWeeklies() {
+    return weeklies.map((region) => region.date).toList();
   }
 
-  NotesRegion getRegion(DateTime date) {
-    return regions.firstWhere((region) => region.date == date);
+  Weekly getWeekly(DateTime date) {
+    return weeklies.firstWhere((region) => region.date == date);
   }
 
-  NotesRegion createRegion(DateTime date) {
-    final region = NotesRegion(date: date);
-    regions.add(region);
-    return region;
+  Weekly createWeekly(DateTime date) {
+    final weekly = Weekly(date: date);
+    weeklies.add(weekly);
+    return weekly;
   }
 
   void recompute({DateTime? now}) {
-    for (var region in regions) {
-      region.recompute(now: now);
+    for (var weekly in weeklies) {
+      weekly.recompute(now: now);
     }
   }
 
   StringBuffer _toStringBuffer() {
     final buffer = StringBuffer();
-    for (var region in regions) {
-      final dateLine = DateFormat(defaultDateFormat).format(region.date);
+    for (var weekly in weeklies) {
+      final dateLine = DateFormat(defaultDateFormat).format(weekly.date);
       buffer.writeln(dateLine);
       buffer.writeln('-' * dateLine.length);
-      if (region.tasks.isNotEmpty) {
-        buffer.writeln(region.todoLine ?? 'TODOs:');
-        for (var task in region.tasks) {
+      if (weekly.tasks.isNotEmpty) {
+        buffer.writeln(weekly.todoLine ?? 'TODOs:');
+        for (var task in weekly.tasks) {
           buffer.writeln(task.toLine());
         }
         buffer.writeln();
       }
-      if (region.notes.isNotEmpty) {
-        buffer.writeln(region.notes.join('\n'));
+      if (weekly.notes.isNotEmpty) {
+        buffer.writeln(weekly.notes.join('\n'));
         buffer.writeln();
       }
-      if (region.tasks.isEmpty && region.notes.isEmpty) {
+      if (weekly.tasks.isEmpty && weekly.notes.isEmpty) {
         buffer.writeln();
       }
     }
@@ -156,13 +156,13 @@ class ProjectFile {
   }
 }
 
-class NotesRegion {
+class Weekly {
   final DateTime date;
   String? todoLine;
   List<Task> tasks = [];
   List<String> notes = [];
 
-  NotesRegion({
+  Weekly({
     required this.date,
   });
 

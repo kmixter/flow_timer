@@ -143,14 +143,14 @@ class _MyHomePageState extends State<MyHomePage>
     await projectFile.parse(content);
 
     final currentDate = DateTime.now();
-    if (projectFile.regions.isEmpty) {
-      projectFile.createRegion(currentDate);
+    if (projectFile.weeklies.isEmpty) {
+      projectFile.createWeekly(currentDate);
     }
 
     setState(() {
       _selectedFile = file;
       _projectFile = projectFile;
-      _selectedDate = projectFile.getDates().last;
+      _selectedDate = projectFile.getWeeklies().last;
       _populateTabsForSelectedDate();
     });
 
@@ -159,9 +159,9 @@ class _MyHomePageState extends State<MyHomePage>
 
   void _populateTabsForSelectedDate() {
     if (_projectFile == null || _selectedDate == null) return;
-    final region = _projectFile!.getRegion(_selectedDate!);
-    final tasks = region.tasks;
-    final notes = region.getNotesString();
+    final weekly = _projectFile!.getWeekly(_selectedDate!);
+    final tasks = weekly.tasks;
+    final notes = weekly.getNotesString();
     setState(() {
       _controllers.clear();
       _focusNodes.clear();
@@ -204,7 +204,7 @@ class _MyHomePageState extends State<MyHomePage>
     String? totalsAnnotation;
     if (_selectedDate != null) {
       totalsAnnotation =
-          _projectFile?.getRegion(_selectedDate!).getTotalsAnnotation();
+          _projectFile?.getWeekly(_selectedDate!).getTotalsAnnotation();
     }
     return totalsAnnotation != null ? 'Tasks ($totalsAnnotation)' : 'Tasks';
   }
@@ -249,11 +249,11 @@ class _MyHomePageState extends State<MyHomePage>
       }
     }
     _logger.info('Saving project to ${_selectedFile!.path}');
-    final region = _projectFile!.getRegion(_selectedDate!);
-    region.tasks = _controllers
+    final weekly = _projectFile!.getWeekly(_selectedDate!);
+    weekly.tasks = _controllers
         .map((controller) => Task.fromLine(controller.text))
         .toList();
-    region.setNotesFromString(_notesController.text);
+    weekly.setNotesFromString(_notesController.text);
     final contents = _projectFile!.toString();
     await _selectedFile!.writeAsString(contents);
     String projectDescriptor =
@@ -338,9 +338,9 @@ class _MyHomePageState extends State<MyHomePage>
                     ),
                   ),
                   ListTile(
-                    title: const Text('Regions'),
+                    title: const Text('Weeklies'),
                   ),
-                  ...?_projectFile?.getDates().map((date) {
+                  ...?_projectFile?.getWeeklies().map((date) {
                     return ListTile(
                       title: Text(DateFormat(defaultDateFormat).format(date)),
                       selected: _selectedDate == date,
@@ -355,7 +355,7 @@ class _MyHomePageState extends State<MyHomePage>
                     );
                   }),
                   ListTile(
-                    title: const Text('<create new region>'),
+                    title: const Text('<create new weekly>'),
                     selected: _selectedDate == DateTime.now(),
                     selectedTileColor: Colors.yellow,
                     onTap: () {

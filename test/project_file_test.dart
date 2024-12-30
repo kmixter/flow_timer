@@ -30,21 +30,21 @@ Notes for 12/10.
     });
 
     test('parse and getDates', () {
-      final dates = projectFile.getDates();
+      final dates = projectFile.getWeeklies();
       expect(dates, [DateTime(2023, 10, 1), DateTime(2024, 12, 10)]);
     });
 
     test('getTasksForDate', () {
-      final region = projectFile.getRegion(DateTime(2023, 10, 1));
-      final tasks = region.tasks;
+      final weekly = projectFile.getWeekly(DateTime(2023, 10, 1));
+      final tasks = weekly.tasks;
       expect(tasks.length, 2);
       expect(tasks[0].desc, 'Task 1');
       expect(tasks[1].desc, 'Task 2');
     });
 
     test('getNotesForDate', () {
-      final region = projectFile.getRegion(DateTime(2023, 10, 1));
-      final notes = region.getNotesString();
+      final weekly = projectFile.getWeekly(DateTime(2023, 10, 1));
+      final notes = weekly.getNotesString();
       expect(notes, 'Notes for 2023-10-01\n');
     });
 
@@ -54,34 +54,34 @@ Notes for 12/10.
     });
 
     test('replaceTasksForDate', () async {
-      final region = projectFile.getRegion(DateTime(2023, 10, 1));
-      region.tasks = [
+      final weekly = projectFile.getWeekly(DateTime(2023, 10, 1));
+      weekly.tasks = [
         Task(dayNumber: 0, desc: 'New Task 1'),
         Task(dayNumber: 1, desc: 'New Task 2'),
       ];
       final newContent = projectFile.toString();
       await projectFile.parse(newContent);
-      final updatedRegion = projectFile.getRegion(DateTime(2023, 10, 1));
-      final tasks = updatedRegion.tasks;
+      final updatedWeekly = projectFile.getWeekly(DateTime(2023, 10, 1));
+      final tasks = updatedWeekly.tasks;
       expect(tasks.length, 2);
       expect(tasks[0].desc, 'New Task 1');
       expect(tasks[1].desc, 'New Task 2');
     });
 
     test('replaceNotesForDate', () async {
-      final region = projectFile.getRegion(DateTime(2023, 10, 1));
-      region.setNotesFromString('New notes for 2023-10-01\n');
+      final weekly = projectFile.getWeekly(DateTime(2023, 10, 1));
+      weekly.setNotesFromString('New notes for 2023-10-01\n');
       final newContent = projectFile.toString();
       await projectFile.parse(newContent);
-      final updatedRegion = projectFile.getRegion(DateTime(2023, 10, 1));
-      final notes = updatedRegion.getNotesString();
+      final updatedWeekly = projectFile.getWeekly(DateTime(2023, 10, 1));
+      final notes = updatedWeekly.getNotesString();
       expect(notes, 'New notes for 2023-10-01\n');
     });
 
     test('test reading empty file', () async {
       final emptyFile = ProjectFile();
       await emptyFile.parse('');
-      expect(emptyFile.regions.isEmpty, true);
+      expect(emptyFile.weeklies.isEmpty, true);
     });
 
     test('test writing empty file', () async {
@@ -91,30 +91,30 @@ Notes for 12/10.
       expect(newContent, '');
     });
 
-    test('test writing file with 2 empty regions', () async {
+    test('test writing file with 2 empty weeklies', () async {
       final emptyFile = ProjectFile();
-      emptyFile.createRegion(DateTime(2023, 10, 1));
-      emptyFile.createRegion(DateTime(2023, 10, 2));
+      emptyFile.createWeekly(DateTime(2023, 10, 1));
+      emptyFile.createWeekly(DateTime(2023, 10, 2));
       final newContent = emptyFile.toString();
       expect(newContent,
           'Sun, Oct 1, 2023\n----------------\n\nMon, Oct 2, 2023\n----------------\n\n');
     });
 
-    test('test reading file with 2 empty regions', () async {
+    test('test reading file with 2 empty weeklies', () async {
       final emptyFile = ProjectFile();
       await emptyFile
           .parse('2023-10-01\n----------\n\n2023-10-02\n----------\n\n');
-      expect(emptyFile.regions.length, 2);
-      expect(emptyFile.regions[0].tasks.isEmpty, true);
-      expect(emptyFile.regions[0].notes.isEmpty, true);
-      expect(emptyFile.regions[1].tasks.isEmpty, true);
-      expect(emptyFile.regions[1].notes.isEmpty, true);
+      expect(emptyFile.weeklies.length, 2);
+      expect(emptyFile.weeklies[0].tasks.isEmpty, true);
+      expect(emptyFile.weeklies[0].notes.isEmpty, true);
+      expect(emptyFile.weeklies[1].tasks.isEmpty, true);
+      expect(emptyFile.weeklies[1].notes.isEmpty, true);
     });
 
     test('test writing empty tasks', () async {
       final justNotes = ProjectFile();
-      final region = justNotes.createRegion(DateTime(2023, 10, 1));
-      region.setNotesFromString('hi there, this is a note');
+      final weekly = justNotes.createWeekly(DateTime(2023, 10, 1));
+      weekly.setNotesFromString('hi there, this is a note');
       final newContent = justNotes.toString();
       expect(newContent,
           'Sun, Oct 1, 2023\n----------------\nhi there, this is a note\n\n');
@@ -124,16 +124,16 @@ Notes for 12/10.
       final justNotes = ProjectFile();
       await justNotes
           .parse('2023-10-01\n----------\nhi there, this is a note\n\n');
-      expect(justNotes.regions.length, 1);
-      expect(justNotes.regions[0].tasks.isEmpty, true);
-      expect(justNotes.regions[0].notes.length, 1);
-      expect(justNotes.regions[0].notes[0], 'hi there, this is a note');
+      expect(justNotes.weeklies.length, 1);
+      expect(justNotes.weeklies[0].tasks.isEmpty, true);
+      expect(justNotes.weeklies[0].notes.length, 1);
+      expect(justNotes.weeklies[0].notes[0], 'hi there, this is a note');
     });
 
     test('test adding first todo', () async {
       final justNotes = ProjectFile();
-      final region = justNotes.createRegion(DateTime(2023, 10, 1));
-      region.tasks.add(Task(dayNumber: 0, desc: 'First Task'));
+      final weekly = justNotes.createWeekly(DateTime(2023, 10, 1));
+      weekly.tasks.add(Task(dayNumber: 0, desc: 'First Task'));
       final newContent = justNotes.toString();
       expect(newContent,
           'Sun, Oct 1, 2023\n----------------\nTODOs:\nM First Task\n\n');
@@ -141,41 +141,41 @@ Notes for 12/10.
 
     test('test recompute day of week order', () async {
       final notes = ProjectFile();
-      final region = notes.createRegion(DateTime(2023, 10, 1));
-      region.tasks.add(Task(dayNumber: 1, desc: 'Second Task'));
-      region.tasks.add(Task(dayNumber: 0, desc: 'FIrst Task'));
-      expect(region.tasks[0].dayNumber, 1);
-      expect(region.tasks[1].dayNumber, 0);
+      final weekly = notes.createWeekly(DateTime(2023, 10, 1));
+      weekly.tasks.add(Task(dayNumber: 1, desc: 'Second Task'));
+      weekly.tasks.add(Task(dayNumber: 0, desc: 'FIrst Task'));
+      expect(weekly.tasks[0].dayNumber, 1);
+      expect(weekly.tasks[1].dayNumber, 0);
       notes.recompute();
-      expect(region.tasks.length, 2);
-      expect(region.tasks[0].dayNumber, 0);
-      expect(region.tasks[1].dayNumber, 1);
-      expect(region.todoLine, 'TODOs:');
+      expect(weekly.tasks.length, 2);
+      expect(weekly.tasks[0].dayNumber, 0);
+      expect(weekly.tasks[1].dayNumber, 1);
+      expect(weekly.todoLine, 'TODOs:');
     });
 
     test('test recompute pending by completion rate', () async {
       final notes = ProjectFile();
-      final region = notes.createRegion(DateTime(2023, 10, 1));
-      region.tasks.add(Task(
+      final weekly = notes.createWeekly(DateTime(2023, 10, 1));
+      weekly.tasks.add(Task(
           dayNumber: -1,
           desc: 'Task 1',
           duration: 6,
           dueDate: DateTime(2023, 10, 7)));
-      region.tasks.add(Task(
+      weekly.tasks.add(Task(
           dayNumber: -1,
           desc: 'Task 2',
           duration: 6,
           dueDate: DateTime(2023, 10, 4)));
       final now = DateTime(2023, 10, 1);
       notes.recompute(now: now);
-      expect(region.tasks.length, 2);
-      expect(region.tasks[0].desc, 'Task 2');
-      expect(region.tasks[0].getCompletionRate(), 2);
-      expect(region.tasks[1].desc, 'Task 1');
-      expect(region.tasks[1].getCompletionRate(), 1);
+      expect(weekly.tasks.length, 2);
+      expect(weekly.tasks[0].desc, 'Task 2');
+      expect(weekly.tasks[0].getCompletionRate(), 2);
+      expect(weekly.tasks[1].desc, 'Task 1');
+      expect(weekly.tasks[1].getCompletionRate(), 1);
 
-      expect(region.getTotalsAnnotation(), '∑: 3m/d');
-      expect(region.todoLine,
+      expect(weekly.getTotalsAnnotation(), '∑: 3m/d');
+      expect(weekly.todoLine,
           'TODOs:                                                            ## ∑: 3m/d');
     });
   });
