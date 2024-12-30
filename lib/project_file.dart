@@ -1,4 +1,4 @@
-import 'task.dart';
+import 'todo.dart';
 import 'package:intl/intl.dart';
 
 const String defaultDateFormat = 'EEE, MMM d, yyyy';
@@ -46,8 +46,8 @@ class ProjectFile {
           break;
 
         case ParseState.readingTodos:
-          if (Task.isTodoLine(line)) {
-            curentWeekly?.tasks.add(Task.fromLine(line));
+          if (Todo.isTodoLine(line)) {
+            curentWeekly?.todos.add(Todo.fromLine(line));
           } else {
             state = ParseState.readingNotes;
             i--; // Reprocess this line in the next state.
@@ -57,7 +57,7 @@ class ProjectFile {
         case ParseState.readingNotes:
           final trimmed = line.trim();
           if (trimmed.isEmpty && curentWeekly?.notes.isEmpty == true) {
-            // Skip empty lines between tasks and notes.
+            // Skip empty lines between todos and notes.
             continue;
           }
           curentWeekly?.notes.add(line.trim());
@@ -103,10 +103,10 @@ class ProjectFile {
       final dateLine = DateFormat(defaultDateFormat).format(weekly.date);
       buffer.writeln(dateLine);
       buffer.writeln('-' * dateLine.length);
-      if (weekly.tasks.isNotEmpty) {
+      if (weekly.todos.isNotEmpty) {
         buffer.writeln(weekly.todoLine ?? 'TODOs:');
-        for (var task in weekly.tasks) {
-          buffer.writeln(task.toLine());
+        for (var todo in weekly.todos) {
+          buffer.writeln(todo.toLine());
         }
         buffer.writeln();
       }
@@ -114,7 +114,7 @@ class ProjectFile {
         buffer.writeln(weekly.notes.join('\n'));
         buffer.writeln();
       }
-      if (weekly.tasks.isEmpty && weekly.notes.isEmpty) {
+      if (weekly.todos.isEmpty && weekly.notes.isEmpty) {
         buffer.writeln();
       }
     }
@@ -159,7 +159,7 @@ class ProjectFile {
 class Weekly {
   final DateTime date;
   String? todoLine;
-  List<Task> tasks = [];
+  List<Todo> todos = [];
   List<String> notes = [];
 
   Weekly({
@@ -178,10 +178,10 @@ class Weekly {
   }
 
   void recompute({DateTime? now}) {
-    for (var task in tasks) {
-      task.computeDaysLeft(now: now);
+    for (var todo in todos) {
+      todo.computeDaysLeft(now: now);
     }
-    sortTasks();
+    sortTodos();
     final totalsAnnotation = getTotalsAnnotation();
     if (totalsAnnotation == null) {
       todoLine = 'TODOs:';
@@ -190,52 +190,52 @@ class Weekly {
     }
   }
 
-  void sortTasks() {
-    final pending = <Task>[];
-    final completedByDay = List.generate(7, (_) => <Task>[]);
+  void sortTodos() {
+    final pending = <Todo>[];
+    final completedByDay = List.generate(7, (_) => <Todo>[]);
 
-    for (final task in tasks) {
-      if (task.dayNumber >= 0) {
-        completedByDay[task.dayNumber].add(task);
+    for (final todo in todos) {
+      if (todo.dayNumber >= 0) {
+        completedByDay[todo.dayNumber].add(todo);
       } else {
-        pending.add(task);
+        pending.add(todo);
       }
     }
 
     pending.sort((a, b) =>
-        _getPendingTaskPriority(b) > _getPendingTaskPriority(a) ? 1 : -1);
+        _getPendingTodoPriority(b) > _getPendingTodoPriority(a) ? 1 : -1);
 
-    final sortedTasks = <Task>[];
-    sortedTasks.addAll(pending);
-    for (final dayTasks in completedByDay) {
-      sortedTasks.addAll(dayTasks);
+    final sortedTodos = <Todo>[];
+    sortedTodos.addAll(pending);
+    for (final dayTodos in completedByDay) {
+      sortedTodos.addAll(dayTodos);
     }
 
-    tasks = sortedTasks;
+    todos = sortedTodos;
   }
 
-  static double _getPendingTaskPriority(Task task) {
-    if (!task.hasCompletionRate) {
+  static double _getPendingTodoPriority(Todo todo) {
+    if (!todo.hasCompletionRate) {
       return -1;
     }
-    if (task.isElapsed) {
+    if (todo.isElapsed) {
       return double.maxFinite;
     }
-    return task.getCompletionRate();
+    return todo.getCompletionRate();
   }
 
   String? getTotalsAnnotation() {
-    if (tasks.any((task) => task.isElapsed)) {
+    if (todos.any((todo) => todo.isElapsed)) {
       return '∑: ELAPSED!';
     }
     double sumCompletionRate = 0;
-    for (final task in tasks) {
-      sumCompletionRate += task.getCompletionRate();
+    for (final todo in todos) {
+      sumCompletionRate += todo.getCompletionRate();
     }
     if (sumCompletionRate == 0) {
       return null;
     }
-    return '∑: ${Task.formatMinutes(sumCompletionRate)}/d';
+    return '∑: ${Todo.formatMinutes(sumCompletionRate)}/d';
   }
 
   static String _formatAnnotations(String line, List<String> annotations) {

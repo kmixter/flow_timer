@@ -1,6 +1,6 @@
 import 'package:test/test.dart';
 import 'package:flow_timer/project_file.dart';
-import 'package:flow_timer/task.dart';
+import 'package:flow_timer/todo.dart';
 
 void main() {
   group('ProjectFile', () {
@@ -36,7 +36,7 @@ Notes for 12/10.
 
     test('getTasksForDate', () {
       final weekly = projectFile.getWeekly(DateTime(2023, 10, 1));
-      final tasks = weekly.tasks;
+      final tasks = weekly.todos;
       expect(tasks.length, 2);
       expect(tasks[0].desc, 'Task 1');
       expect(tasks[1].desc, 'Task 2');
@@ -55,14 +55,14 @@ Notes for 12/10.
 
     test('replaceTasksForDate', () async {
       final weekly = projectFile.getWeekly(DateTime(2023, 10, 1));
-      weekly.tasks = [
-        Task(dayNumber: 0, desc: 'New Task 1'),
-        Task(dayNumber: 1, desc: 'New Task 2'),
+      weekly.todos = [
+        Todo(dayNumber: 0, desc: 'New Task 1'),
+        Todo(dayNumber: 1, desc: 'New Task 2'),
       ];
       final newContent = projectFile.toString();
       await projectFile.parse(newContent);
       final updatedWeekly = projectFile.getWeekly(DateTime(2023, 10, 1));
-      final tasks = updatedWeekly.tasks;
+      final tasks = updatedWeekly.todos;
       expect(tasks.length, 2);
       expect(tasks[0].desc, 'New Task 1');
       expect(tasks[1].desc, 'New Task 2');
@@ -105,9 +105,9 @@ Notes for 12/10.
       await emptyFile
           .parse('2023-10-01\n----------\n\n2023-10-02\n----------\n\n');
       expect(emptyFile.weeklies.length, 2);
-      expect(emptyFile.weeklies[0].tasks.isEmpty, true);
+      expect(emptyFile.weeklies[0].todos.isEmpty, true);
       expect(emptyFile.weeklies[0].notes.isEmpty, true);
-      expect(emptyFile.weeklies[1].tasks.isEmpty, true);
+      expect(emptyFile.weeklies[1].todos.isEmpty, true);
       expect(emptyFile.weeklies[1].notes.isEmpty, true);
     });
 
@@ -125,7 +125,7 @@ Notes for 12/10.
       await justNotes
           .parse('2023-10-01\n----------\nhi there, this is a note\n\n');
       expect(justNotes.weeklies.length, 1);
-      expect(justNotes.weeklies[0].tasks.isEmpty, true);
+      expect(justNotes.weeklies[0].todos.isEmpty, true);
       expect(justNotes.weeklies[0].notes.length, 1);
       expect(justNotes.weeklies[0].notes[0], 'hi there, this is a note');
     });
@@ -133,7 +133,7 @@ Notes for 12/10.
     test('test adding first todo', () async {
       final justNotes = ProjectFile();
       final weekly = justNotes.createWeekly(DateTime(2023, 10, 1));
-      weekly.tasks.add(Task(dayNumber: 0, desc: 'First Task'));
+      weekly.todos.add(Todo(dayNumber: 0, desc: 'First Task'));
       final newContent = justNotes.toString();
       expect(newContent,
           'Sun, Oct 1, 2023\n----------------\nTODOs:\nM First Task\n\n');
@@ -142,37 +142,37 @@ Notes for 12/10.
     test('test recompute day of week order', () async {
       final notes = ProjectFile();
       final weekly = notes.createWeekly(DateTime(2023, 10, 1));
-      weekly.tasks.add(Task(dayNumber: 1, desc: 'Second Task'));
-      weekly.tasks.add(Task(dayNumber: 0, desc: 'FIrst Task'));
-      expect(weekly.tasks[0].dayNumber, 1);
-      expect(weekly.tasks[1].dayNumber, 0);
+      weekly.todos.add(Todo(dayNumber: 1, desc: 'Second Task'));
+      weekly.todos.add(Todo(dayNumber: 0, desc: 'FIrst Task'));
+      expect(weekly.todos[0].dayNumber, 1);
+      expect(weekly.todos[1].dayNumber, 0);
       notes.recompute();
-      expect(weekly.tasks.length, 2);
-      expect(weekly.tasks[0].dayNumber, 0);
-      expect(weekly.tasks[1].dayNumber, 1);
+      expect(weekly.todos.length, 2);
+      expect(weekly.todos[0].dayNumber, 0);
+      expect(weekly.todos[1].dayNumber, 1);
       expect(weekly.todoLine, 'TODOs:');
     });
 
     test('test recompute pending by completion rate', () async {
       final notes = ProjectFile();
       final weekly = notes.createWeekly(DateTime(2023, 10, 1));
-      weekly.tasks.add(Task(
+      weekly.todos.add(Todo(
           dayNumber: -1,
           desc: 'Task 1',
           duration: 6,
           dueDate: DateTime(2023, 10, 7)));
-      weekly.tasks.add(Task(
+      weekly.todos.add(Todo(
           dayNumber: -1,
           desc: 'Task 2',
           duration: 6,
           dueDate: DateTime(2023, 10, 4)));
       final now = DateTime(2023, 10, 1);
       notes.recompute(now: now);
-      expect(weekly.tasks.length, 2);
-      expect(weekly.tasks[0].desc, 'Task 2');
-      expect(weekly.tasks[0].getCompletionRate(), 2);
-      expect(weekly.tasks[1].desc, 'Task 1');
-      expect(weekly.tasks[1].getCompletionRate(), 1);
+      expect(weekly.todos.length, 2);
+      expect(weekly.todos[0].desc, 'Task 2');
+      expect(weekly.todos[0].getCompletionRate(), 2);
+      expect(weekly.todos[1].desc, 'Task 1');
+      expect(weekly.todos[1].getCompletionRate(), 1);
 
       expect(weekly.getTotalsAnnotation(), '∑: 3m/d');
       expect(weekly.todoLine,

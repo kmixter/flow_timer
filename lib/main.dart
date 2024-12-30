@@ -8,7 +8,7 @@ import 'package:path/path.dart' as path;
 import 'package:watcher/watcher.dart';
 import 'drive_sync.dart';
 import 'project_file.dart';
-import 'task.dart';
+import 'todo.dart';
 
 final Logger _logger = Logger('main');
 
@@ -160,30 +160,30 @@ class _MyHomePageState extends State<MyHomePage>
   void _populateTabsForSelectedDate() {
     if (_projectFile == null || _selectedDate == null) return;
     final weekly = _projectFile!.getWeekly(_selectedDate!);
-    final tasks = weekly.tasks;
+    final todos = weekly.todos;
     final notes = weekly.getNotesString();
     setState(() {
       _controllers.clear();
       _focusNodes.clear();
-      for (var task in tasks) {
-        _setTaskControllerAndFocusNode(null, task.toLine());
+      for (var todo in todos) {
+        _setTodoControllerAndFocusNode(null, todo.toLine());
       }
       _notesController.text = notes;
     });
   }
 
-  void _setTaskControllerAndFocusNode(int? index, String text) {
+  void _setTodoControllerAndFocusNode(int? index, String text) {
     final controller = TextEditingController(text: text);
     final focusNode = FocusNode();
     focusNode.addListener(() {
       if (focusNode.hasFocus) return;
       final text = controller.text.trim();
-      Task? task;
+      Todo? todo;
       try {
-        task = Task.fromLine(text);
+        todo = Todo.fromLine(text);
       } catch (e) {
-        task = Task(dayNumber: -1, desc: text);
-        controller.text = task.toLine();
+        todo = Todo(dayNumber: -1, desc: text);
+        controller.text = todo.toLine();
         controller.selection = TextSelection.fromPosition(
             TextPosition(offset: controller.text.length));
         setState(() {
@@ -200,13 +200,13 @@ class _MyHomePageState extends State<MyHomePage>
     }
   }
 
-  String getTasksTabText() {
+  String getTodosTabText() {
     String? totalsAnnotation;
     if (_selectedDate != null) {
       totalsAnnotation =
           _projectFile?.getWeekly(_selectedDate!).getTotalsAnnotation();
     }
-    return totalsAnnotation != null ? 'Tasks ($totalsAnnotation)' : 'Tasks';
+    return totalsAnnotation != null ? 'Todos ($totalsAnnotation)' : 'Todos';
   }
 
   Future<void> _showFailedToSelectDirectoryDialog(
@@ -250,8 +250,8 @@ class _MyHomePageState extends State<MyHomePage>
     }
     _logger.info('Saving project to ${_selectedFile!.path}');
     final weekly = _projectFile!.getWeekly(_selectedDate!);
-    weekly.tasks = _controllers
-        .map((controller) => Task.fromLine(controller.text))
+    weekly.todos = _controllers
+        .map((controller) => Todo.fromLine(controller.text))
         .toList();
     weekly.setNotesFromString(_notesController.text);
     final contents = _projectFile!.toString();
@@ -267,7 +267,7 @@ class _MyHomePageState extends State<MyHomePage>
 
   void _addNewItem() {
     setState(() {
-      _setTaskControllerAndFocusNode(null, '');
+      _setTodoControllerAndFocusNode(null, '');
       _hasChanges = true;
     });
   }
@@ -412,7 +412,7 @@ class _MyHomePageState extends State<MyHomePage>
                           child: TextField(
                             controller: _controllers[index],
                             focusNode: _focusNodes[index],
-                            decoration: InputDecoration(hintText: 'Enter task'),
+                            decoration: InputDecoration(hintText: 'Enter todo'),
                             style: TextStyle(fontSize: 24),
                             onChanged: (newValue) {
                               setState(() {
@@ -442,7 +442,7 @@ class _MyHomePageState extends State<MyHomePage>
             ),
             floatingActionButton: FloatingActionButton(
               onPressed: _addNewItem,
-              tooltip: 'Add Task',
+              tooltip: 'Add Todo',
               child: const Icon(Icons.add),
             ),
           ),
