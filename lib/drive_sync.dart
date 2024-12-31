@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:oauth2/oauth2.dart' as oauth2;
@@ -19,8 +20,7 @@ class DriveSync {
   late Map<String, dynamic> _credentials;
 
   Future<void> loadCredentials() async {
-    final file = File('assets/client_secret.json');
-    final contents = await file.readAsString();
+    final contents = await rootBundle.loadString('assets/client_secret.json');
     _credentials = jsonDecode(contents);
   }
 
