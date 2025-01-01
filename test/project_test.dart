@@ -178,5 +178,34 @@ Notes for 12/10.
       expect(weekly.todoLine,
           'TODOs:                                                            ## ∑: 3m/d');
     });
+
+    test('createWeeklyIfNeeded creates a new weekly if project is empty', () {
+      final project = Project();
+      // NB: 10/1/23 is a Sunday.
+      project.createWeeklyIfNeeded(now: DateTime(2023, 10, 1));
+
+      expect(project.weeklies.length, 1);
+      expect(project.weeklies.first.date, DateTime(2023, 9, 25));
+    });
+
+    test('createWeeklyIfNeeded moves pending tasks to new w)eekly', () {
+      final project = Project();
+      project.createWeekly(DateTime(2023, 10, 1));
+      final previousWeekly = project.weeklies.last;
+      previousWeekly.todos.add(Todo.fromLine('* Task 1'));
+      previousWeekly.todos.add(Todo.fromLine('* Task 2'));
+      previousWeekly.todos.add(Todo.fromLine('F Task 3'));
+
+      project.createWeeklyIfNeeded(now: DateTime(2023, 10, 2));
+
+      expect(project.weeklies.length, 2);
+      final newWeekly = project.weeklies.last;
+      expect(newWeekly.date, DateTime(2023, 10, 2));
+      expect(newWeekly.todos.length, 2);
+      expect(newWeekly.todos[0].desc, 'Task 1');
+      expect(newWeekly.todos[1].desc, 'Task 2');
+      expect(previousWeekly.todos.length, 1);
+      expect(previousWeekly.todos[0].desc, 'Task 3');
+    });
   });
 }

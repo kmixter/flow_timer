@@ -5,14 +5,28 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
+import 'dart:io';
 import 'package:flow_timer/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  late Directory tempDir;
+  late MyApp app;
+
+  setUp(() async {
+    tempDir = await Directory.systemTemp.createTemp();
+    app = await createMyApp(overrideStorageDirectory: tempDir.path);
+  });
+
+  tearDown(() async {
+  await tempDir.delete(recursive: true);
+});
+
+
   testWidgets('Add new item and save', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(app);
 
     // Verify that the initial list is empty.
     expect(find.byType(ListTile), findsNothing);

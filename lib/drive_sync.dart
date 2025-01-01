@@ -6,11 +6,10 @@ import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:oauth2/oauth2.dart' as oauth2;
 import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'local_storage.dart';
 
 final _driveFolderName = 'FlowTimer';
-final _localPreferencesDir = '.config/FlowTimer';
 final _logger = Logger('DriveSync');
 
 class DriveSync {
@@ -18,6 +17,19 @@ class DriveSync {
   String? driveFolderId;
   static const _scopes = ['https://www.googleapis.com/auth/drive.file'];
   late Map<String, dynamic> _credentials;
+  final LocalStorage _localStorage;
+
+  DriveSync(this._localStorage);
+
+  Future<void> initialize() async {
+    await loadCredentials();
+
+    refreshAccessToken().then((_) async {
+      if (oauth2Client != null) {
+        await postLoginWithOAuth2();
+      }
+    });
+  }
 
   Future<void> loadCredentials() async {
     final contents = await rootBundle.loadString('assets/client_secret.json');
@@ -74,7 +86,7 @@ class DriveSync {
       _logger.warning('No refresh token received');
     }
 
-    await _storeRefreshToken(client.credentials.refreshToken);
+    await _localStorage.storeRefreshToken(client.credentials.refreshToken!);
 
     request.response
       ..statusCode = HttpStatus.ok
@@ -92,25 +104,8 @@ class DriveSync {
     await _reconcileWithOAuth2();
   }
 
-  Future<void> _storeRefreshToken(String? refreshToken) async {
-    if (refreshToken != null) {
-      final directory = await _getPreferencesDirectory();
-      final file = File(path.join(directory.path, 'refresh_token.txt'));
-      await file.writeAsString(refreshToken);
-    }
-  }
-
-  Future<String?> _loadRefreshToken() async {
-    final directory = await _getPreferencesDirectory();
-    final file = File(path.join(directory.path, 'refresh_token.txt'));
-    if (await file.exists()) {
-      return await file.readAsString();
-    }
-    return null;
-  }
-
   Future<void> refreshAccessToken() async {
-    final refreshToken = await _loadRefreshToken();
+    final refreshToken = _localStorage.refreshToken;
     if (refreshToken != null) {
       final credentials = oauth2.Credentials(
         '',
@@ -126,7 +121,7 @@ class DriveSync {
       oauth2Client = client;
       _logger.info('Refreshed access token: ${client.credentials.accessToken}');
 
-      await _storeRefreshToken(client.credentials.refreshToken);
+      await _localStorage.storeRefreshToken(client.credentials.refreshToken!);
     }
   }
 
@@ -166,6 +161,7 @@ class DriveSync {
         _logger.severe('Failed to update file: ${updateResponse.body}');
       } else {
         _logger.info('Updated file ID: $fileId');
+        await _localStorage.markCloudSync(projectDescriptor);
       }
     } else {
       final createResponse = await http.post(
@@ -197,6 +193,7 @@ $contents
       } else {
         final createdFile = jsonDecode(createResponse.body);
         _logger.info('Created file ID: ${createdFile['id']}');
+        await _localStorage.markCloudSync(projectDescriptor);
       }
     }
   }
@@ -233,11 +230,10 @@ $contents
     }
   }
 
-  Future<Set<String>> _reconcileWithOAuth2() async {
-    Set<String> modifiedPaths = {};
+  Future<void> _reconcileWithOAuth2() async {
     if (driveFolderId == null) {
       _logger.info('Google Drive folder not found. Cannot reconcile.');
-      return modifiedPaths;
+      return;
     }
 
     final headers = {
@@ -254,15 +250,16 @@ $contents
     final listResult = jsonDecode(listResponse.body);
     if (listResult['files'] == null || listResult['files'].isEmpty) {
       _logger.info('No files found in the $_driveFolderName folder.');
-      return modifiedPaths;
+      return;
     }
 
     for (var file in listResult['files']) {
       final driveFileName = file['name'];
       _logger.fine('Considering Drive file: $driveFileName');
       _logger.fine('All Drive metadata is: $file');
-      final localFilePath = _getProjectPathFromDriveFileName(driveFileName);
-      _logger.fine('Equivalent local path: $localFilePath');
+      final name = path.basenameWithoutExtension(driveFileName);
+      var localProjectMetadata = _localStorage.getProjectMetadata(name);
+      _logger.fine('Equivalent local path: $localProjectMetadata?.path');
 
       final driveFileResponse = await http.get(
         Uri.parse(
@@ -280,62 +277,25 @@ $contents
       final driveFileModifiedTime =
           DateTime.parse(driveFileMetadata['modifiedTime']);
 
-      var localFile = File(path.join(localFilePath, 'project.txt'));
-
-      if (!await localFile.exists()) {
-        localFile = File(path.join(localFilePath, 'notes.txt'));
+      if (localProjectMetadata == null) {
+        _localStorage.createNewProject(name, contents: driveFileContents);
+        localProjectMetadata = _localStorage.getProjectMetadata(name);
+        await _localStorage.markCloudSync(name);
+        _logger.info('Created local project: ${localProjectMetadata!.path}');
       }
 
-      if (await localFile.exists()) {
-        final localFileModifiedTime = await localFile.lastModified();
-        _logger.info(
-            'Comparing local ($localFileModifiedTime) vs drive ($driveFileModifiedTime)');
-        if (driveFileModifiedTime.isAfter(localFileModifiedTime)) {
-          _logger.info('Synchronizing local file to drive');
-          await localFile.writeAsString(driveFileContents);
-          modifiedPaths.add(localFilePath);
-        } else {
-          _logger.info(
-              'Local file is newer than drive, letting user manually save');
-        }
-      } else {
-        await _createParentDirectories(localFilePath);
+      final File localFile = File(localProjectMetadata.path);
+      final localFileModifiedTime = await localFile.lastModified();
+      _logger.info(
+          'Comparing local ($localFileModifiedTime) vs drive ($driveFileModifiedTime)');
+      if (driveFileModifiedTime.isAfter(localFileModifiedTime)) {
+        _logger.info('Synchronizing local file to drive');
         await localFile.writeAsString(driveFileContents);
-        _logger.info('Created local file: $localFilePath');
+        await _localStorage.markCloudSync(name);
+      } else {
+        _logger
+            .info('Local file is newer than drive, letting user manually save');
       }
     }
-    return modifiedPaths;
-  }
-
-  Future<Directory> _getPreferencesDirectory() async {
-    final directory = await getApplicationDocumentsDirectory();
-    final preferencesDirectory =
-        Directory(path.join(directory.path, _localPreferencesDir));
-    if (!await preferencesDirectory.exists()) {
-      await preferencesDirectory.create(recursive: true);
-    }
-    return preferencesDirectory;
-  }
-
-  Future<void> _createParentDirectories(String filePath) async {
-    final directory = Directory(path.dirname(filePath));
-    if (!await directory.exists()) {
-      await directory.create(recursive: true);
-    }
-  }
-
-  String getProjectDescriptor(String filepath) {
-    return path.basename(path.dirname(filepath));
-  }
-
-  String _getProjectPath(String descriptor) {
-    return path.join(Platform.environment['HOME']!, 'prj', descriptor);
-  }
-
-  String _getProjectPathFromDriveFileName(String driveFileName) {
-    final descriptor = driveFileName.endsWith('.txt')
-        ? driveFileName.substring(0, driveFileName.length - 4)
-        : driveFileName;
-    return _getProjectPath(descriptor);
   }
 }

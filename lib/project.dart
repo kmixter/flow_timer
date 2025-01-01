@@ -86,9 +86,26 @@ class Project {
   }
 
   Weekly createWeekly(DateTime date) {
-    final weekly = Weekly(date: date);
-    weeklies.add(weekly);
-    return weekly;
+    Weekly newWeekly = Weekly(date: date);
+    weeklies.add(newWeekly);
+    return newWeekly;
+  }
+
+  void createWeeklyIfNeeded({DateTime? now}) {
+    final currentDate = now ?? DateTime.now();
+    final lastMondayDate = currentDate
+        .subtract(Duration(days: currentDate.weekday - DateTime.monday));
+    if (weeklies.isEmpty || weeklies.last.date.isBefore(lastMondayDate)) {
+      weeklies.add(Weekly(date: lastMondayDate));
+      // Bring forward pending tasks from last week and remove them from last week
+      if (weeklies.length > 1) {
+        final lastWeekly = weeklies[weeklies.length - 2];
+        final lastWeekPending =
+            lastWeekly.todos.where((todo) => todo.dayNumber == -1).toList();
+        lastWeekly.todos.removeWhere((todo) => todo.dayNumber == -1);
+        weeklies.last.todos.insertAll(0, lastWeekPending);
+      }
+    }
   }
 
   void recompute({DateTime? now}) {
