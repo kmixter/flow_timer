@@ -97,4 +97,26 @@ void main() {
   test('isKnownProject returns false for unknown project', () {
     expect(localStorage.isKnownProject('UnknownProject'), isFalse);
   });
+
+  test('store and read metadata', () async {
+    final testDate = DateTime(2023, 1, 10);
+    localStorage.metadata.refreshToken = 'test_token';
+    localStorage.metadata.lastOpenedProject = 'TestProject';
+    localStorage.metadata.projects['TestProject'] =
+        ProjectMetadata('TestProject', 'path', testDate);
+    localStorage.metadata.projects['AnotherProject'] =
+        ProjectMetadata('AnotherProject', 'another_path', null);
+    await localStorage.writeMetadata();
+
+    final newLocalStorage = LocalStorage();
+    await newLocalStorage.initialize(overrideStorageDirectory: tempDir.path);
+    await newLocalStorage.loadMetadata();
+
+    expect(newLocalStorage.refreshToken, 'test_token');
+    expect(newLocalStorage.lastOpenedProject, 'TestProject');
+    expect(newLocalStorage.getProjectMetadata('TestProject')?.name, 'TestProject');
+    expect(newLocalStorage.getProjectMetadata('TestProject')?.path, 'path');
+    expect(newLocalStorage.getProjectMetadata('TestProject')?.lastCloudSync, testDate);
+    expect(newLocalStorage.getProjectMetadata('AnotherProject')?.name, 'AnotherProject');
+  });
 }

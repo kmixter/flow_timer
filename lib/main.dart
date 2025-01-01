@@ -10,7 +10,7 @@ import 'todo.dart';
 import 'local_storage.dart';
 
 final Logger _logger = Logger('main');
-final String _noName = 'noname';
+final String _noName = 'My Project';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +29,7 @@ Future<MyApp> createMyApp({String? overrideStorageDirectory}) async {
   final driveSync = DriveSync(localStorage);
   await driveSync.initialize();
   final projectMetadata = await _pickInitialProject(localStorage);
-  final project = await _loadProjectFromMetadata(projectMetadata);
+  final project = await _loadProjectFromMetadata(localStorage, projectMetadata);
   return MyApp(
     localStorage: localStorage,
     driveSync: driveSync,
@@ -48,12 +48,14 @@ Future<ProjectMetadata> _pickInitialProject(LocalStorage localStorage) async {
   return projectMetadata;
 }
 
-Future<Project> _loadProjectFromMetadata(ProjectMetadata projectMetadata) async {
+Future<Project> _loadProjectFromMetadata(LocalStorage localStorage, ProjectMetadata projectMetadata) async {
   _logger.info('Loading project from ${projectMetadata.path}');
   File file = File(projectMetadata.path);
   final content = await file.readAsString();
   final project = Project();
   await project.parse(content);
+  await localStorage.updateLastOpenedProject(projectMetadata.name);
+
   project.createWeeklyIfNeeded();
   project.recompute();
   return project;
@@ -142,17 +144,13 @@ class _MyHomePageState extends State<MyHomePage>
         return;
       }
       if (event.type == ChangeType.MODIFY) {
-        _loadProjectFromMetadata();
+        _loadProjectFromMetadataIntoUI();
       }
     });
   }
 
-  Future<void> _loadProjectFromMetadata() async {
-    _logger.info('Loading project from ${_projectMetadata.path}');
-    File file = File(_projectMetadata.path);
-    final content = await file.readAsString();
-    final project = Project();
-    await project.parse(content);
+  Future<void> _loadProjectFromMetadataIntoUI() async {
+    final project = await _loadProjectFromMetadata(_localStorage, _projectMetadata);
     project.createWeeklyIfNeeded();
     project.recompute();
 
@@ -361,11 +359,11 @@ class _MyHomePageState extends State<MyHomePage>
                     title: Text(name),
                     selected: _projectMetadata.name == name,
                     selectedTileColor: Colors.yellow,
-                    onTap: () {
+                    onTap: () async {
+                      _projectMetadata =
+                          _localStorage.getProjectMetadata(name)!;
+                      await _loadProjectFromMetadataIntoUI();
                       setState(() {
-                        _projectMetadata =
-                            _localStorage.getProjectMetadata(name)!;
-                        _loadProjectFromMetadata();
                         Navigator.pop(context); // Close the drawer
                       });
                     },
@@ -380,8 +378,8 @@ class _MyHomePageState extends State<MyHomePage>
                     }
                     _projectMetadata =
                         await _localStorage.createNewProject(name);
+                    await _loadProjectFromMetadataIntoUI();
                     setState(() {
-                      _loadProjectFromMetadata();
                       Navigator.pop(context);
                     });
                   },

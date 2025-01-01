@@ -93,7 +93,7 @@ class Project {
 
   void createWeeklyIfNeeded({DateTime? now}) {
     final currentDate = now ?? DateTime.now();
-    final lastMondayDate = currentDate
+    final lastMondayDate = DateTime(currentDate.year, currentDate.month, currentDate.day)
         .subtract(Duration(days: currentDate.weekday - DateTime.monday));
     if (weeklies.isEmpty || weeklies.last.date.isBefore(lastMondayDate)) {
       weeklies.add(Weekly(date: lastMondayDate));

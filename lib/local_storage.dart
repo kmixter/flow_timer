@@ -28,11 +28,8 @@ class LocalStorage {
   }
 
   Directory get storageDirectory => _storageDirectory;
-
   String? get refreshToken => _metadata.refreshToken;
-
   String? get lastOpenedProject => _metadata.lastOpenedProject;
-
   Metadata get metadata => _metadata;
 
   Future<void> loadMetadata() async {
@@ -44,7 +41,6 @@ class LocalStorage {
     } else {
       _metadata = Metadata();
     }
-
   }
 
   Future<void> writeMetadata() async {
@@ -60,6 +56,11 @@ class LocalStorage {
 
   Future<void> updateProjectPath(String descriptor, String filePath) async {
     _metadata.projects[descriptor]!.path = filePath;
+    await writeMetadata();
+  }
+
+  Future<void> updateLastOpenedProject(String name) async {
+    _metadata.lastOpenedProject = name;
     await writeMetadata();
   }
 
@@ -113,7 +114,7 @@ class Metadata {
     projects = {};
     if (projectsJson != null) {
       projects = projectsJson.map<String, ProjectMetadata>(
-          (key, value) => MapEntry(key, ProjectMetadata.fromJson(value)));
+            (key, value) => MapEntry(key as String, ProjectMetadata.fromJson(value)));
     }
   }
 
