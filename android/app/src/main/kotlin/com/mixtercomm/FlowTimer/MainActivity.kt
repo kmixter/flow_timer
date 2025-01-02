@@ -1,4 +1,4 @@
-package com.example.flow_timer
+package com.mixtercomm.FlowTimer
 
 import io.flutter.embedding.android.FlutterActivity
 
