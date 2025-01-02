@@ -37,9 +37,9 @@ class DriveSync {
   }
 
   Future<void> login() async {
-    if (Platform.isLinux) {
+    if (Platform.isLinux || Platform.isMacOS) {
       await _loginWithOAuth2();
-    } else if (Platform.isAndroid) {
+    } else {
       await _loginWithGoogleSignIn();
     }
   }
@@ -259,7 +259,7 @@ $contents
       _logger.fine('All Drive metadata is: $file');
       final name = path.basenameWithoutExtension(driveFileName);
       var localProjectMetadata = _localStorage.getProjectMetadata(name);
-      _logger.fine('Equivalent local path: $localProjectMetadata?.path');
+      _logger.fine('Equivalent local path: ${localProjectMetadata?.path}');
 
       final driveFileResponse = await http.get(
         Uri.parse(
