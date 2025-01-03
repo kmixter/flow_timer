@@ -405,14 +405,15 @@ class _MyHomePageState extends State<MyHomePage>
                           focusNode: _focusNodes[index],
                           decoration: InputDecoration(
                             hintText: 'Enter todo',
-                            filled: true,
                             fillColor:
                                 todo != null && todo.startTime != null
                                     ? Colors.green.withOpacity(0.3)
                                     : null,
+                            isDense: true,
+                            border: InputBorder.none,
                           ),
                           style: TextStyle(
-                              fontSize: 20, fontFamily: 'monospace'),
+                              fontSize: 16, fontFamily: 'monospace'),
                         ),
                       );
                     } else {
@@ -423,10 +424,10 @@ class _MyHomePageState extends State<MyHomePage>
                           maxLines: null,
                           decoration: InputDecoration(
                             hintText: 'Enter notes',
-                            border: OutlineInputBorder(),
+                            border: InputBorder.none,
                           ),
                           style: TextStyle(
-                              fontSize: 20, fontFamily: 'monospace'),
+                              fontSize: 16, fontFamily: 'monospace'),
                           onChanged: (newValue) {
                             setState(() {
                               _hasEdits = true;
