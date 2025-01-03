@@ -44,4 +44,5 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 assets/client_secret.json
+ios/Runner/Info.plist
 notes.txt
