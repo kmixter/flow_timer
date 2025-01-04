@@ -45,7 +45,7 @@ void main() {
   test('createNewProject creates a new project', () async {
     final project = await localStorage.createNewProject('TestProject');
     expect(project.name, 'TestProject');
-    expect(await File(project.path).exists(), isTrue);
+    expect(await File(localStorage.getAbsolutePath(project)).exists(), isTrue);
   });
 
   test('getProjectMetadata returns correct metadata', () {
@@ -73,13 +73,6 @@ void main() {
     expect(projectNames, containsAll(['FirstProject', 'SecondProject']));
   });
 
-  test('updateProjectPath updates project path', () async {
-    localStorage.metadata.projects['TestProject'] =
-        ProjectMetadata('TestProject', 'old_path', null);
-    await localStorage.updateProjectPath('TestProject', 'new_path');
-    expect(localStorage.getProjectMetadata('TestProject')?.path, 'new_path');
-  });
-
   test('markCloudSync updates last cloud sync time', () async {
     localStorage.metadata.projects['TestProject'] =
         ProjectMetadata('TestProject', 'path', null);
@@ -103,9 +96,9 @@ void main() {
     localStorage.metadata.refreshToken = 'test_token';
     localStorage.metadata.lastOpenedProject = 'TestProject';
     localStorage.metadata.projects['TestProject'] =
-        ProjectMetadata('TestProject', 'path', testDate);
+        ProjectMetadata('TestProject', 'relpath', testDate);
     localStorage.metadata.projects['AnotherProject'] =
-        ProjectMetadata('AnotherProject', 'another_path', null);
+        ProjectMetadata('AnotherProject', 'another_relpath', null);
     await localStorage.writeMetadata();
 
     final newLocalStorage = LocalStorage();
@@ -115,8 +108,14 @@ void main() {
     expect(newLocalStorage.refreshToken, 'test_token');
     expect(newLocalStorage.lastOpenedProject, 'TestProject');
     expect(newLocalStorage.getProjectMetadata('TestProject')?.name, 'TestProject');
-    expect(newLocalStorage.getProjectMetadata('TestProject')?.path, 'path');
+    expect(newLocalStorage.getProjectMetadata('TestProject')?.relativePath, 'relpath');
     expect(newLocalStorage.getProjectMetadata('TestProject')?.lastCloudSync, testDate);
     expect(newLocalStorage.getProjectMetadata('AnotherProject')?.name, 'AnotherProject');
+  });
+
+  test('getAbsolutePath returns correct absolute path', () async {
+    final project = await localStorage.createNewProject('TestProject');
+    final expectedPath = path.join(tempDir.path, 'TestProject.txt');
+    expect(localStorage.getAbsolutePath(project), expectedPath);
   });
 }

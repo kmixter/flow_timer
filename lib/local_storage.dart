@@ -1,7 +1,13 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:flow_timer/project.dart';
+import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'package:watcher/watcher.dart';
+
+final Logger _logger = Logger('LocalStorage');
 
 final _localStorageDir = '.config/FlowTimer';
 
@@ -35,6 +41,7 @@ class LocalStorage {
   Future<void> loadMetadata() async {
     final metadataFile =
         File(path.join(_storageDirectory.path, 'metadata.json'));
+    _logger.info('Loading $metadataFile');
     if (await metadataFile.exists()) {
       final content = await metadataFile.readAsString();
       _metadata = Metadata.fromJson(jsonDecode(content));
@@ -43,10 +50,26 @@ class LocalStorage {
     }
   }
 
+  Future<void> logFilesInDocumentsDirectory() async {
+    final documentsDir = _storageDirectory;
+    final List<FileSystemEntity> entities = await documentsDir.list().toList();
+
+    for (FileSystemEntity entity in entities) {
+      if (entity is File) {
+        _logger.info('File: ${entity.path}');
+      } else if (entity is Directory) {
+        _logger.info('Directory: ${entity.path}');
+      }
+    }
+  }
+
   Future<void> writeMetadata() async {
-    final metadataFile =
-        File(path.join(_storageDirectory.path, 'metadata.json'));
-    await metadataFile.writeAsString(jsonEncode(_metadata.toJson()));
+    final metadataFile = File(path.join(_storageDirectory.path, 'metadata.json'));
+    _logger.fine('Starting writing $metadataFile');
+    final tempFile = File('${metadataFile.path}.tmp');
+    await tempFile.writeAsString(jsonEncode(_metadata.toJson()));
+    await tempFile.rename(metadataFile.path);
+    _logger.fine('Finished writing $metadataFile');
   }
 
   Future<void> storeRefreshToken(String refreshToken) async {
@@ -54,9 +77,38 @@ class LocalStorage {
     await writeMetadata();
   }
 
-  Future<void> updateProjectPath(String descriptor, String filePath) async {
-    _metadata.projects[descriptor]!.path = filePath;
-    await writeMetadata();
+  File _getProjectFile(ProjectMetadata project) {
+    return File(getAbsolutePath(project));
+  }
+
+  Future<Project> loadProject(ProjectMetadata projectMetadata) async {
+    final File localFile = _getProjectFile(projectMetadata);
+    final content = await localFile.readAsString();
+    final project = Project();
+    await project.parse(content);
+    return project;
+  }
+
+  Future<void> overwriteProjectContents(ProjectMetadata project, String contents) async {
+    final File localFile = _getProjectFile(project);
+    await localFile.writeAsString(contents);
+  }
+
+  void watchProject(ProjectMetadata project, void Function(WatchEvent event) callback) {
+    final watcher = FileWatcher(getAbsolutePath(project));
+    watcher.events.listen((event) {
+      callback(event);
+    });
+  }
+
+  @visibleForTesting
+  String getAbsolutePath(ProjectMetadata project) {
+    return path.join(_storageDirectory.path, project.relativePath);
+  }
+
+  Future<DateTime> getProjectFileModifiedTime(ProjectMetadata project) async {
+    final File localFile = _getProjectFile(project);
+    return await localFile.lastModified();
   }
 
   Future<void> updateLastOpenedProject(String name) async {
@@ -75,12 +127,11 @@ class LocalStorage {
 
   Future<ProjectMetadata> createNewProject(String name,
       {String contents = ''}) async {
-    final localFile = path.join(_storageDirectory.path, '$name.txt');
-    _metadata.projects[name] = ProjectMetadata(name, localFile, null);
-    File localProject = File(localFile);
-    await localProject.writeAsString(contents);
+    ProjectMetadata projectMetadata = ProjectMetadata(name, '$name.txt', null);
+    _metadata.projects[name] = projectMetadata;
+    overwriteProjectContents(projectMetadata, contents);
     await writeMetadata();
-    return _metadata.projects[name]!;
+    return projectMetadata;
   }
 
   ProjectMetadata? getProjectMetadata(String name) {
@@ -100,7 +151,7 @@ class LocalStorage {
 }
 
 class Metadata {
-  final double version = 1.0;
+  final double version = 0.1;
   String? refreshToken;
   String? lastOpenedProject;
   Map<String, ProjectMetadata> projects = {};
@@ -131,18 +182,18 @@ class Metadata {
 
 class ProjectMetadata {
   final String name;
-  String path;
+  String relativePath;
   DateTime? lastCloudSync;
 
-  ProjectMetadata(this.name, this.path, this.lastCloudSync);
+  ProjectMetadata(this.name, this.relativePath, this.lastCloudSync);
 
   ProjectMetadata.empty(this.name)
-      : path = '',
+      : relativePath = '',
         lastCloudSync = null;
 
   ProjectMetadata.fromJson(Map<String, dynamic> json)
       : name = json['name'],
-        path = json['path'],
+        relativePath = json['relativePath'],
         lastCloudSync = json['lastCloudSync'] != null
             ? DateTime.parse(json['lastCloudSync'])
             : null;
@@ -150,7 +201,7 @@ class ProjectMetadata {
   Map<String, dynamic> toJson() {
     return {
       'name': name,
-      'path': path,
+      'relativePath': relativePath,
       'lastCloudSync': lastCloudSync?.toIso8601String(),
     };
   }

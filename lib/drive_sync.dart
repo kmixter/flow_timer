@@ -259,7 +259,7 @@ $contents
       _logger.fine('All Drive metadata is: $file');
       final name = path.basenameWithoutExtension(driveFileName);
       var localProjectMetadata = _localStorage.getProjectMetadata(name);
-      _logger.fine('Equivalent local path: ${localProjectMetadata?.path}');
+      _logger.fine('Equivalent local relative path: ${localProjectMetadata?.relativePath}');
 
       final driveFileResponse = await http.get(
         Uri.parse(
@@ -281,16 +281,15 @@ $contents
         _localStorage.createNewProject(name, contents: driveFileContents);
         localProjectMetadata = _localStorage.getProjectMetadata(name);
         await _localStorage.markCloudSync(name);
-        _logger.info('Created local project: ${localProjectMetadata!.path}');
+        _logger.info('Created local project: ${localProjectMetadata!.relativePath}');
       }
 
-      final File localFile = File(localProjectMetadata.path);
-      final localFileModifiedTime = await localFile.lastModified();
+      final localFileModifiedTime = await _localStorage.getProjectFileModifiedTime(localProjectMetadata);
       _logger.info(
           'Comparing local ($localFileModifiedTime) vs drive ($driveFileModifiedTime)');
       if (driveFileModifiedTime.isAfter(localFileModifiedTime)) {
         _logger.info('Synchronizing local file to drive');
-        await localFile.writeAsString(driveFileContents);
+        await _localStorage.overwriteProjectContents(localProjectMetadata, driveFileContents);
         await _localStorage.markCloudSync(name);
       } else {
         _logger

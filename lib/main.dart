@@ -1,9 +1,7 @@
-import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:intl/intl.dart';
-import 'package:watcher/watcher.dart';
 import 'drive_sync.dart';
 import 'project.dart';
 import 'todo.dart';
@@ -26,6 +24,7 @@ void main() async {
 Future<MyApp> createMyApp({String? overrideStorageDirectory}) async {
   final localStorage = LocalStorage();
   await localStorage.initialize(overrideStorageDirectory: overrideStorageDirectory);
+  await localStorage.logFilesInDocumentsDirectory();
   final driveSync = DriveSync(localStorage);
   await driveSync.initialize();
   final projectMetadata = await _pickInitialProject(localStorage);
@@ -49,11 +48,7 @@ Future<ProjectMetadata> _pickInitialProject(LocalStorage localStorage) async {
 }
 
 Future<Project> _loadProjectFromMetadata(LocalStorage localStorage, ProjectMetadata projectMetadata) async {
-  _logger.info('Loading project from ${projectMetadata.path}');
-  File file = File(projectMetadata.path);
-  final content = await file.readAsString();
-  final project = Project();
-  await project.parse(content);
+  final project = await localStorage.loadProject(projectMetadata);
   await localStorage.updateLastOpenedProject(projectMetadata.name);
 
   project.createWeeklyIfNeeded();
@@ -122,7 +117,6 @@ class _MyHomePageState extends State<MyHomePage>
   final List<FocusNode> _focusNodes = [];
   final List<TextEditingController> _todoControllers = [];
   final TextEditingController _notesController = TextEditingController();
-  FileWatcher? _fileWatcher;
 
   @override
   void initState() {
@@ -137,15 +131,12 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   void _initializeFileWatcher() {
-    final currentActiveFile = _projectMetadata.path;
-    _fileWatcher = FileWatcher(currentActiveFile);
-    _fileWatcher!.events.listen((event) {
-      if (currentActiveFile != _projectMetadata.path) {
+    final currentActiveProject = _projectMetadata.name;
+    _localStorage.watchProject(_projectMetadata, (event) {
+      if (currentActiveProject != _projectMetadata.name) {
         return;
       }
-      if (event.type == ChangeType.MODIFY) {
-        _loadProjectFromMetadataIntoUI();
-      }
+      _loadProjectFromMetadataIntoUI();
     });
   }
 
@@ -213,11 +204,11 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   Future<void> _saveProject() async {
-    _logger.info('Saving project to ${_projectMetadata.path}');
+    _logger.info('Saving project to ${_projectMetadata.relativePath}');
     _weekly.setNotesFromString(_notesController.text);
     final contents = _project.toString();
-    File projectFile = File(_projectMetadata.path);
-    await projectFile.writeAsString(contents);
+    _localStorage.overwriteProjectContents(_projectMetadata, contents);
+    _logger.info('Project saved to ${_projectMetadata.relativePath}');
     await _driveSync.syncProjectToDrive(_projectMetadata.name, contents);
     setState(() {
       _hasEdits = false;
@@ -453,7 +444,6 @@ class _MyHomePageState extends State<MyHomePage>
 
   @override
   void dispose() {
-    _fileWatcher = null;
     for (var controller in _todoControllers) {
       controller.dispose();
     }

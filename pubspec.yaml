@@ -30,13 +30,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  googleapis: ^13.2.0
   file_picker: ^8.1.6
   google_sign_in: ^6.2.2
+  googleapis: ^13.2.0
   googleapis_auth: ^1.6.0
   http: ^1.2.2
-  logging: ^1.0.2
   intl: ^0.20.1
+  logging: ^1.0.2
+  meta: ^1.7.0
   oauth2: ^2.0.0
   path: ^1.8.0
   path_provider: ^2.0.2
