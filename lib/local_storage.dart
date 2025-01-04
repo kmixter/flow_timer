@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flow_timer/project.dart';
@@ -94,9 +95,9 @@ class LocalStorage {
     await localFile.writeAsString(contents);
   }
 
-  void watchProject(ProjectMetadata project, void Function(WatchEvent event) callback) {
+  StreamSubscription<WatchEvent> watchProject(ProjectMetadata project, void Function(WatchEvent event) callback) {
     final watcher = FileWatcher(getAbsolutePath(project));
-    watcher.events.listen((event) {
+    return watcher.events.listen((event) {
       callback(event);
     });
   }

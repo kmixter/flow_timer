@@ -38,9 +38,13 @@ class DriveSync {
 
   Future<void> login() async {
     if (Platform.isLinux || Platform.isMacOS) {
-      await _loginWithOAuth2();
+      await _loginWithBrowserAndLocalhost();
     } else {
       await _loginWithGoogleSignIn();
+    }
+
+    if (oauth2Client != null) {
+      await postLoginWithOAuth2();
     }
   }
 
@@ -48,9 +52,30 @@ class DriveSync {
     final googleSignIn = GoogleSignIn.standard(scopes: _scopes);
     final account = await googleSignIn.signIn();
     _logger.fine('currentUser=$account');
+
+    if (account == null) {
+      return;
+    }
+
+    final GoogleSignInAuthentication googleAuth = await account.authentication;
+
+    final oauth2.Credentials credentials = oauth2.Credentials(
+      googleAuth.accessToken!,
+      tokenEndpoint: Uri.parse('https://oauth2.googleapis.com/token'),
+      scopes: ['https://www.googleapis.com/auth/drive.file'],
+    );
+
+    oauth2Client = oauth2.Client(credentials);
+    _logger.info('Access token: ${oauth2Client!.credentials.accessToken}');
+
+    if (!oauth2Client!.credentials.canRefresh) {
+      _logger.warning('No refresh token received');
+    } else {
+      await _localStorage.storeRefreshToken(oauth2Client!.credentials.refreshToken!);
+    }
   }
 
-  Future<void> _loginWithOAuth2() async {
+  Future<void> _loginWithBrowserAndLocalhost() async {
     final authorizationEndpoint = Uri.parse(_credentials['web']['auth_uri']);
     final tokenEndpoint = Uri.parse(_credentials['web']['token_uri']);
     final identifier = _credentials['web']['client_id'];
@@ -77,16 +102,15 @@ class DriveSync {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 8080);
     final request = await server.first;
     final queryParams = request.uri.queryParameters;
-    final client = await grant.handleAuthorizationResponse(queryParams);
+    oauth2Client = await grant.handleAuthorizationResponse(queryParams);
 
-    oauth2Client = client;
-    _logger.info('Access token: ${client.credentials.accessToken}');
+    _logger.info('Access token: ${oauth2Client!.credentials.accessToken}');
 
-    if (!client.credentials.canRefresh) {
+    if (!oauth2Client!.credentials.canRefresh) {
       _logger.warning('No refresh token received');
     }
 
-    await _localStorage.storeRefreshToken(client.credentials.refreshToken!);
+    await _localStorage.storeRefreshToken(oauth2Client!.credentials.refreshToken!);
 
     request.response
       ..statusCode = HttpStatus.ok
@@ -95,13 +119,16 @@ class DriveSync {
           '<html><h1>Authentication successful! You can close this window.</h1></html>');
     await request.response.close();
     await server.close();
-
-    await postLoginWithOAuth2();
   }
 
   Future<void> postLoginWithOAuth2() async {
-    await _findOrCreateDriveFolderWithOAuth2();
-    await _reconcileWithOAuth2();
+    try {
+      await _findOrCreateDriveFolderWithOAuth2();
+      await _reconcileWithOAuth2();
+    } catch (e) {
+      _logger.warning('Exception during postLoginWithOAuth2; disabling drive sync');
+      oauth2Client = null;
+    }
   }
 
   Future<void> refreshAccessToken() async {
@@ -116,7 +143,13 @@ class DriveSync {
       final client = oauth2.Client(credentials,
           identifier: _credentials['web']['client_id'],
           secret: _credentials['web']['client_secret']);
-      await client.refreshCredentials();
+      try {
+        await client.refreshCredentials();
+      } catch (e) {
+        _logger.warning('Exception while trying to refresh oauth2 access token');
+        oauth2Client = null;
+        return;
+      }
 
       oauth2Client = client;
       _logger.info('Refreshed access token: ${client.credentials.accessToken}');

@@ -117,6 +117,7 @@ class _MyHomePageState extends State<MyHomePage>
   final List<FocusNode> _focusNodes = [];
   final List<TextEditingController> _todoControllers = [];
   final TextEditingController _notesController = TextEditingController();
+  StreamSubscription? _currentProjectStreamSubscription;
 
   @override
   void initState() {
@@ -127,15 +128,13 @@ class _MyHomePageState extends State<MyHomePage>
     _project = widget.project;
     _weekly = _project.weeklies.last;
     _populateTabsForSelectedWeekly();
-    _initializeFileWatcher();
+    _setupFileWatcher();
   }
 
-  void _initializeFileWatcher() {
-    final currentActiveProject = _projectMetadata.name;
-    _localStorage.watchProject(_projectMetadata, (event) {
-      if (currentActiveProject != _projectMetadata.name) {
-        return;
-      }
+  void _setupFileWatcher() {
+    _currentProjectStreamSubscription?.cancel();
+    _currentProjectStreamSubscription = _localStorage.watchProject(_projectMetadata, (event) {
+      _logger.info('File changed: ${event.path}');
       _loadProjectFromMetadataIntoUI();
     });
   }
@@ -151,7 +150,7 @@ class _MyHomePageState extends State<MyHomePage>
       _populateTabsForSelectedWeekly();
     });
 
-    _initializeFileWatcher();
+    _setupFileWatcher();
   }
 
   void _populateTabsForSelectedWeekly() {
