@@ -23,7 +23,8 @@ void main() async {
 
 Future<MyApp> createMyApp({String? overrideStorageDirectory}) async {
   final localStorage = LocalStorage();
-  await localStorage.initialize(overrideStorageDirectory: overrideStorageDirectory);
+  await localStorage.initialize(
+      overrideStorageDirectory: overrideStorageDirectory);
   await localStorage.logFilesInDocumentsDirectory();
   final driveSync = DriveSync(localStorage);
   await driveSync.initialize();
@@ -40,14 +41,16 @@ Future<MyApp> createMyApp({String? overrideStorageDirectory}) async {
 Future<ProjectMetadata> _pickInitialProject(LocalStorage localStorage) async {
   ProjectMetadata? projectMetadata;
   if (localStorage.lastOpenedProject != null) {
-    projectMetadata = localStorage.getProjectMetadata(localStorage.lastOpenedProject!);
+    projectMetadata =
+        localStorage.getProjectMetadata(localStorage.lastOpenedProject!);
   }
   projectMetadata ??= localStorage.getFirstProjectMetadata();
   projectMetadata ??= await localStorage.createNewProject(_noName);
   return projectMetadata;
 }
 
-Future<Project> _loadProjectFromMetadata(LocalStorage localStorage, ProjectMetadata projectMetadata) async {
+Future<Project> _loadProjectFromMetadata(
+    LocalStorage localStorage, ProjectMetadata projectMetadata) async {
   final project = await localStorage.loadProject(projectMetadata);
   await localStorage.updateLastOpenedProject(projectMetadata.name);
 
@@ -147,18 +150,24 @@ class _MyHomePageState extends State<MyHomePage>
     _setupFileWatcher();
     _checkCloudStatus();
     _deferredSaver = DeferredSaver(saveFile: _saveProject);
+    super.initState();
+    _localStorage.onChanges.listen((_) {
+      setState(() {});
+    });
   }
 
   void _setupFileWatcher() {
     _currentProjectStreamSubscription?.cancel();
-    _currentProjectStreamSubscription = _localStorage.watchProject(_projectMetadata, (event) {
+    _currentProjectStreamSubscription =
+        _localStorage.watchProject(_projectMetadata, (event) {
       _logger.info('File changed: ${event.path}');
       _loadProjectFromMetadataIntoUI();
     });
   }
 
   Future<void> _loadProjectFromMetadataIntoUI() async {
-    final project = await _loadProjectFromMetadata(_localStorage, _projectMetadata);
+    final project =
+        await _loadProjectFromMetadata(_localStorage, _projectMetadata);
     project.createWeeklyIfNeeded();
     project.recompute();
 
@@ -308,9 +317,8 @@ class _MyHomePageState extends State<MyHomePage>
             ),
             IconButton(
               icon: const Icon(Icons.login),
-              onPressed: _driveSync.oauth2Client == null
-                  ? _driveSync.login
-                  : null,
+              onPressed:
+                  _driveSync.oauth2Client == null ? _driveSync.login : null,
             ),
           ],
         ),
@@ -358,8 +366,7 @@ class _MyHomePageState extends State<MyHomePage>
                   selected: _projectMetadata.name == name,
                   selectedTileColor: Colors.yellow,
                   onTap: () async {
-                    _projectMetadata =
-                        _localStorage.getProjectMetadata(name)!;
+                    _projectMetadata = _localStorage.getProjectMetadata(name)!;
                     await _loadProjectFromMetadataIntoUI();
                     setState(() {
                       Navigator.pop(context); // Close the drawer
@@ -374,8 +381,7 @@ class _MyHomePageState extends State<MyHomePage>
                   if (name == null) {
                     return;
                   }
-                  _projectMetadata =
-                      await _localStorage.createNewProject(name);
+                  _projectMetadata = await _localStorage.createNewProject(name);
                   await _loadProjectFromMetadataIntoUI();
                   setState(() {
                     Navigator.pop(context);
@@ -403,15 +409,13 @@ class _MyHomePageState extends State<MyHomePage>
                         focusNode: _focusNodes[index],
                         decoration: InputDecoration(
                           hintText: 'Enter todo',
-                          fillColor:
-                              todo != null && todo.startTime != null
-                                    ? Colors.green.withAlpha(76)
-                                  : null,
+                          fillColor: todo != null && todo.startTime != null
+                              ? Colors.green.withAlpha(76)
+                              : null,
                           isDense: true,
                           border: InputBorder.none,
                         ),
-                        style: TextStyle(
-                            fontSize: 16, fontFamily: 'monospace'),
+                        style: TextStyle(fontSize: 16, fontFamily: 'monospace'),
                       ),
                     );
                   } else {
@@ -424,8 +428,7 @@ class _MyHomePageState extends State<MyHomePage>
                           hintText: 'Enter notes',
                           border: InputBorder.none,
                         ),
-                        style: TextStyle(
-                            fontSize: 16, fontFamily: 'monospace'),
+                        style: TextStyle(fontSize: 16, fontFamily: 'monospace'),
                         onChanged: (newValue) {
                           _deferredSaver.registerEdit();
                         },

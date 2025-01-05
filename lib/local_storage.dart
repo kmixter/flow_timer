@@ -17,6 +17,10 @@ final _lock = Lock();
 class LocalStorage {
   late Directory _storageDirectory;
   late Metadata _metadata;
+  final StreamController<void> _changesController =
+      StreamController<void>.broadcast();
+
+  Stream<void> get onChanges => _changesController.stream;
 
   Future<void> initialize({String? overrideStorageDirectory}) async {
     if (overrideStorageDirectory != null) {
@@ -52,6 +56,7 @@ class LocalStorage {
       } else {
         _metadata = Metadata();
       }
+      _changesController.add(null); // Notify changes
     });
   }
 
@@ -70,7 +75,8 @@ class LocalStorage {
 
   Future<void> writeMetadata() async {
     await _lock.synchronized(() async {
-      final metadataFile = File(path.join(_storageDirectory.path, 'metadata.json'));
+      final metadataFile =
+          File(path.join(_storageDirectory.path, 'metadata.json'));
       _logger.fine('Starting writing $metadataFile');
       final tempFile = File('${metadataFile.path}.tmp');
       await tempFile.writeAsString(jsonEncode(_metadata.toJson()));
@@ -98,14 +104,17 @@ class LocalStorage {
     });
   }
 
-  Future<void> overwriteProjectContents(ProjectMetadata project, String contents) async {
+  Future<void> overwriteProjectContents(
+      ProjectMetadata project, String contents) async {
     await _lock.synchronized(() async {
       final File localFile = _getProjectFile(project);
       await localFile.writeAsString(contents);
+      _changesController.add(null); // Notify changes
     });
   }
 
-  StreamSubscription<WatchEvent> watchProject(ProjectMetadata project, void Function(WatchEvent event) callback) {
+  StreamSubscription<WatchEvent> watchProject(
+      ProjectMetadata project, void Function(WatchEvent event) callback) {
     final watcher = FileWatcher(getAbsolutePath(project));
     return watcher.events.listen((event) {
       callback(event);
@@ -177,8 +186,8 @@ class Metadata {
     final projectsJson = json['projects'];
     projects = {};
     if (projectsJson != null) {
-      projects = projectsJson.map<String, ProjectMetadata>(
-            (key, value) => MapEntry(key as String, ProjectMetadata.fromJson(value)));
+      projects = projectsJson.map<String, ProjectMetadata>((key, value) =>
+          MapEntry(key as String, ProjectMetadata.fromJson(value)));
     }
   }
 
