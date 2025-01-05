@@ -78,7 +78,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'FlowTimer',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.grey, brightness: Brightness.dark),
         useMaterial3: true,
       ),
       home: MyHomePage(
@@ -336,11 +338,14 @@ class _MyHomePageState extends State<MyHomePage>
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.primary,
                 ),
-                child: Text(
-                  'FlowTimer',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
+                child: Align(
+                  alignment: Alignment.bottomLeft,
+                  child: Text(
+                    'FlowTimer',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                    ),
                   ),
                 ),
               ),
@@ -351,7 +356,7 @@ class _MyHomePageState extends State<MyHomePage>
                 return ListTile(
                   title: Text(DateFormat(defaultDateFormat).format(date)),
                   selected: _weekly.date == date,
-                  selectedTileColor: Colors.yellow,
+                  selectedTileColor: Colors.blue[900],
                   onTap: () {
                     setState(() {
                       _weekly = _project.weeklies
@@ -370,7 +375,7 @@ class _MyHomePageState extends State<MyHomePage>
                 return ListTile(
                   title: Text(name),
                   selected: _projectMetadata.name == name,
-                  selectedTileColor: Colors.yellow,
+                  selectedTileColor: Colors.blue[900],
                   onTap: () async {
                     _projectMetadata = _localStorage.getProjectMetadata(name)!;
                     await _loadProjectFromMetadataIntoUI();
