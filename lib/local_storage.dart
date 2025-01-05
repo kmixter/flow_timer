@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flow_timer/project.dart';
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
-import 'package:meta/meta.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:watcher/watcher.dart';
@@ -17,10 +17,7 @@ final _lock = Lock();
 class LocalStorage {
   late Directory _storageDirectory;
   late Metadata _metadata;
-  final StreamController<void> _changesController =
-      StreamController<void>.broadcast();
-
-  Stream<void> get onChanges => _changesController.stream;
+  VoidCallback? onChanges;
 
   Future<void> initialize({String? overrideStorageDirectory}) async {
     if (overrideStorageDirectory != null) {
@@ -56,7 +53,7 @@ class LocalStorage {
       } else {
         _metadata = Metadata();
       }
-      _changesController.add(null); // Notify changes
+      onChanges?.call();
     });
   }
 
@@ -109,7 +106,7 @@ class LocalStorage {
     await _lock.synchronized(() async {
       final File localFile = _getProjectFile(project);
       await localFile.writeAsString(contents);
-      _changesController.add(null); // Notify changes
+      onChanges?.call();
     });
   }
 

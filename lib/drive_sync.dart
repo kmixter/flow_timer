@@ -18,6 +18,7 @@ class DriveSync {
   static const _scopes = ['https://www.googleapis.com/auth/drive.file'];
   late Map<String, dynamic> _credentials;
   final LocalStorage _localStorage;
+  VoidCallback? onLoginStateChanged;
 
   DriveSync(this._localStorage);
 
@@ -45,7 +46,13 @@ class DriveSync {
 
     if (oauth2Client != null) {
       await postLoginWithOAuth2();
+      onLoginStateChanged?.call();
     }
+  }
+
+  Future<void> logout() async {
+    oauth2Client = null;
+    onLoginStateChanged?.call();
   }
 
   Future<void> _loginWithGoogleSignIn() async {
@@ -71,7 +78,8 @@ class DriveSync {
     if (!oauth2Client!.credentials.canRefresh) {
       _logger.warning('No refresh token received');
     } else {
-      await _localStorage.storeRefreshToken(oauth2Client!.credentials.refreshToken!);
+      await _localStorage
+          .storeRefreshToken(oauth2Client!.credentials.refreshToken!);
     }
   }
 
@@ -110,7 +118,8 @@ class DriveSync {
       _logger.warning('No refresh token received');
     }
 
-    await _localStorage.storeRefreshToken(oauth2Client!.credentials.refreshToken!);
+    await _localStorage
+        .storeRefreshToken(oauth2Client!.credentials.refreshToken!);
 
     request.response
       ..statusCode = HttpStatus.ok
@@ -126,7 +135,8 @@ class DriveSync {
       await _findOrCreateDriveFolderWithOAuth2();
       await _reconcileWithOAuth2();
     } catch (e) {
-      _logger.warning('Exception during postLoginWithOAuth2; disabling drive sync');
+      _logger.warning(
+          'Exception during postLoginWithOAuth2; disabling drive sync');
       oauth2Client = null;
     }
   }
@@ -146,7 +156,8 @@ class DriveSync {
       try {
         await client.refreshCredentials();
       } catch (e) {
-        _logger.warning('Exception while trying to refresh oauth2 access token');
+        _logger
+            .warning('Exception while trying to refresh oauth2 access token');
         oauth2Client = null;
         return;
       }
@@ -292,7 +303,8 @@ $contents
       _logger.fine('All Drive metadata is: $file');
       final name = path.basenameWithoutExtension(driveFileName);
       var localProjectMetadata = _localStorage.getProjectMetadata(name);
-      _logger.fine('Equivalent local relative path: ${localProjectMetadata?.relativePath}');
+      _logger.fine(
+          'Equivalent local relative path: ${localProjectMetadata?.relativePath}');
 
       final driveFileResponse = await http.get(
         Uri.parse(
@@ -314,15 +326,18 @@ $contents
         _localStorage.createNewProject(name, contents: driveFileContents);
         localProjectMetadata = _localStorage.getProjectMetadata(name);
         await _localStorage.markCloudSync(name);
-        _logger.info('Created local project: ${localProjectMetadata!.relativePath}');
+        _logger.info(
+            'Created local project: ${localProjectMetadata!.relativePath}');
       }
 
-      final localFileModifiedTime = await _localStorage.getProjectFileModifiedTime(localProjectMetadata);
+      final localFileModifiedTime =
+          await _localStorage.getProjectFileModifiedTime(localProjectMetadata);
       _logger.info(
           'Comparing local ($localFileModifiedTime) vs drive ($driveFileModifiedTime)');
       if (driveFileModifiedTime.isAfter(localFileModifiedTime)) {
         _logger.info('Synchronizing local file to drive');
-        await _localStorage.overwriteProjectContents(localProjectMetadata, driveFileContents);
+        await _localStorage.overwriteProjectContents(
+            localProjectMetadata, driveFileContents);
         await _localStorage.markCloudSync(name);
       } else {
         _logger

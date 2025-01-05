@@ -151,9 +151,15 @@ class _MyHomePageState extends State<MyHomePage>
     _checkCloudStatus();
     _deferredSaver = DeferredSaver(saveFile: _saveProject);
     super.initState();
-    _localStorage.onChanges.listen((_) {
+    _localStorage.onChanges = () {
       setState(() {});
-    });
+    };
+    _driveSync.onLoginStateChanged = () {
+      _logger.info('OAuth2 login state changed');
+      setState(() {
+        _checkCloudStatus();
+      });
+    };
   }
 
   void _setupFileWatcher() {
