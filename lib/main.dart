@@ -15,7 +15,7 @@ void main() async {
   Logger.root.level = Level.ALL;
 
   Logger.root.onRecord.listen((record) {
-    print('${record.level.name}: ${record.time}: ${record.message}');
+    debugPrint('${record.level.name}: ${record.time}: ${record.message}');
   });
 
   runApp(await createMyApp());
@@ -88,6 +88,20 @@ class MyApp extends StatelessWidget {
   }
 }
 
+class DeferredSaver {
+  final Function saveFile;
+  Timer? _timer;
+
+  DeferredSaver({required this.saveFile});
+
+  void registerEdit() {
+    _timer?.cancel();
+    _timer = Timer(Duration(seconds: 4), () async {
+      await saveFile();
+    });
+  }
+}
+
 class MyHomePage extends StatefulWidget {
   final LocalStorage localStorage;
   final DriveSync driveSync;
@@ -109,7 +123,6 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage>
     with SingleTickerProviderStateMixin {
   late LocalStorage _localStorage;
-  bool _hasEdits = false;
   late DriveSync _driveSync;
   late ProjectMetadata _projectMetadata;
   late Project _project;
@@ -118,6 +131,9 @@ class _MyHomePageState extends State<MyHomePage>
   final List<TextEditingController> _todoControllers = [];
   final TextEditingController _notesController = TextEditingController();
   StreamSubscription? _currentProjectStreamSubscription;
+  bool _isLocalOnly = false;
+  Timer? _notesSaveTimer;
+  late DeferredSaver _deferredSaver;
 
   @override
   void initState() {
@@ -129,6 +145,8 @@ class _MyHomePageState extends State<MyHomePage>
     _weekly = _project.weeklies.last;
     _populateTabsForSelectedWeekly();
     _setupFileWatcher();
+    _checkCloudStatus();
+    _deferredSaver = DeferredSaver(saveFile: _saveProject);
   }
 
   void _setupFileWatcher() {
@@ -168,7 +186,7 @@ class _MyHomePageState extends State<MyHomePage>
     final controller = TextEditingController(text: text);
     final focusNode = FocusNode();
     final newIndex = _todoControllers.length;
-    focusNode.addListener(() {
+    focusNode.addListener(() async {
       if (focusNode.hasFocus) return;
       final text = controller.text.trim();
       Todo? todo;
@@ -194,9 +212,7 @@ class _MyHomePageState extends State<MyHomePage>
       for (var i = 0; i < _todoControllers.length; i++) {
         _todoControllers[i].text = _weekly.todos[i].toLine();
       }
-      setState(() {
-        _hasEdits = true;
-      });
+      _deferredSaver.registerEdit();
     });
     _todoControllers.add(controller);
     _focusNodes.add(focusNode);
@@ -210,14 +226,13 @@ class _MyHomePageState extends State<MyHomePage>
     _logger.info('Project saved to ${_projectMetadata.relativePath}');
     await _driveSync.syncProjectToDrive(_projectMetadata.name, contents);
     setState(() {
-      _hasEdits = false;
+      _checkCloudStatus();
     });
   }
 
   void _addNewItem() {
     setState(() {
       _addTodoControllerAndFocusNode('');
-      _hasEdits = true;
     });
   }
 
@@ -264,178 +279,168 @@ class _MyHomePageState extends State<MyHomePage>
     return projectName;
   }
 
+  void _checkCloudStatus() {
+    setState(() {
+      _isLocalOnly = _driveSync.oauth2Client == null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return FocusScope(
-      child: RawKeyboardListener(
-        focusNode: FocusNode(),
-        onKey: (event) {
-          if (event.isControlPressed && event.logicalKey.keyLabel == 'S') {
-            if (_hasEdits) {
-              _saveProject();
-            }
-          }
-        },
-        child: Scaffold(
-          appBar: AppBar(
-            backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(_projectMetadata.name),
-                Text(
-                  DateFormat(defaultDateFormat).format(_weekly.date),
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.login),
-                onPressed: _driveSync.oauth2Client == null
-                    ? _driveSync.login
-                    : null,
-              ),
-              IconButton(
-                icon: const Icon(Icons.save),
-                onPressed: _hasEdits
-                    ? () {
-                        _saveProject();
-                      }
-                    : null,
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(_projectMetadata.name),
+              Text(
+                DateFormat(defaultDateFormat).format(_weekly.date),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
               ),
             ],
           ),
-          drawer: Drawer(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                DrawerHeader(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
+          actions: [
+            IconButton(
+              icon: Icon(_isLocalOnly ? Icons.cloud_off : Icons.cloud),
+              onPressed: null,
+            ),
+            IconButton(
+              icon: const Icon(Icons.login),
+              onPressed: _driveSync.oauth2Client == null
+                  ? _driveSync.login
+                  : null,
+            ),
+          ],
+        ),
+        drawer: Drawer(
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              DrawerHeader(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                child: Text(
+                  'FlowTimer',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
                   ),
-                  child: Text(
-                    'FlowTimer',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                    ),
-                  ),
                 ),
-                ListTile(
-                  title: const Text('Weeklies'),
-                ),
-                ..._project.getWeeklies().map((date) {
-                  return ListTile(
-                    title: Text(DateFormat(defaultDateFormat).format(date)),
-                    selected: _weekly.date == date,
-                    selectedTileColor: Colors.yellow,
-                    onTap: () {
-                      setState(() {
-                        _weekly = _project.weeklies
-                            .firstWhere((weekly) => weekly.date == date);
-                        _populateTabsForSelectedWeekly();
-                        Navigator.pop(context); // Close the drawer
-                      });
-                    },
-                  );
-                }),
-                Divider(),
-                ListTile(
-                  title: const Text('Projects'),
-                ),
-                ..._localStorage.getProjectNames().map((name) {
-                  return ListTile(
-                    title: Text(name),
-                    selected: _projectMetadata.name == name,
-                    selectedTileColor: Colors.yellow,
-                    onTap: () async {
-                      _projectMetadata =
-                          _localStorage.getProjectMetadata(name)!;
-                      await _loadProjectFromMetadataIntoUI();
-                      setState(() {
-                        Navigator.pop(context); // Close the drawer
-                      });
-                    },
-                  );
-                }),
-                ListTile(
-                  title: const Text('Create New Project'),
-                  onTap: () async {
-                    var name = await _promptForNewProjectName();
-                    if (name == null) {
-                      return;
-                    }
-                    _projectMetadata =
-                        await _localStorage.createNewProject(name);
-                    await _loadProjectFromMetadataIntoUI();
+              ),
+              ListTile(
+                title: const Text('Weeklies'),
+              ),
+              ..._project.getWeeklies().map((date) {
+                return ListTile(
+                  title: Text(DateFormat(defaultDateFormat).format(date)),
+                  selected: _weekly.date == date,
+                  selectedTileColor: Colors.yellow,
+                  onTap: () {
                     setState(() {
-                      Navigator.pop(context);
+                      _weekly = _project.weeklies
+                          .firstWhere((weekly) => weekly.date == date);
+                      _populateTabsForSelectedWeekly();
+                      Navigator.pop(context); // Close the drawer
                     });
                   },
-                ),
-              ],
-            ),
-          ),
-          body: Column(
-            children: [
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _todoControllers.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index < _todoControllers.length) {
-                      Todo? todo = index < _weekly.todos.length
-                          ? _weekly.todos[index]
-                          : null;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 0, horizontal: 8.0),
-                        child: TextField(
-                          controller: _todoControllers[index],
-                          focusNode: _focusNodes[index],
-                          decoration: InputDecoration(
-                            hintText: 'Enter todo',
-                            fillColor:
-                                todo != null && todo.startTime != null
-                                    ? Colors.green.withOpacity(0.3)
-                                    : null,
-                            isDense: true,
-                            border: InputBorder.none,
-                          ),
-                          style: TextStyle(
-                              fontSize: 16, fontFamily: 'monospace'),
-                        ),
-                      );
-                    } else {
-                      return Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: TextField(
-                          controller: _notesController,
-                          maxLines: null,
-                          decoration: InputDecoration(
-                            hintText: 'Enter notes',
-                            border: InputBorder.none,
-                          ),
-                          style: TextStyle(
-                              fontSize: 16, fontFamily: 'monospace'),
-                          onChanged: (newValue) {
-                            setState(() {
-                              _hasEdits = true;
-                            });
-                          },
-                        ),
-                      );
-                    }
+                );
+              }),
+              Divider(),
+              ListTile(
+                title: const Text('Projects'),
+              ),
+              ..._localStorage.getProjectNames().map((name) {
+                return ListTile(
+                  title: Text(name),
+                  selected: _projectMetadata.name == name,
+                  selectedTileColor: Colors.yellow,
+                  onTap: () async {
+                    _projectMetadata =
+                        _localStorage.getProjectMetadata(name)!;
+                    await _loadProjectFromMetadataIntoUI();
+                    setState(() {
+                      Navigator.pop(context); // Close the drawer
+                    });
                   },
-                ),
+                );
+              }),
+              ListTile(
+                title: const Text('Create New Project'),
+                onTap: () async {
+                  var name = await _promptForNewProjectName();
+                  if (name == null) {
+                    return;
+                  }
+                  _projectMetadata =
+                      await _localStorage.createNewProject(name);
+                  await _loadProjectFromMetadataIntoUI();
+                  setState(() {
+                    Navigator.pop(context);
+                  });
+                },
               ),
             ],
           ),
-          floatingActionButton: FloatingActionButton(
-            onPressed: _addNewItem,
-            tooltip: 'Add Todo',
-            child: const Icon(Icons.add),
-          ),
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                itemCount: _todoControllers.length + 1,
+                itemBuilder: (context, index) {
+                  if (index < _todoControllers.length) {
+                    Todo? todo = index < _weekly.todos.length
+                        ? _weekly.todos[index]
+                        : null;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 0, horizontal: 8.0),
+                      child: TextField(
+                        controller: _todoControllers[index],
+                        focusNode: _focusNodes[index],
+                        decoration: InputDecoration(
+                          hintText: 'Enter todo',
+                          fillColor:
+                              todo != null && todo.startTime != null
+                                    ? Colors.green.withAlpha(76)
+                                  : null,
+                          isDense: true,
+                          border: InputBorder.none,
+                        ),
+                        style: TextStyle(
+                            fontSize: 16, fontFamily: 'monospace'),
+                      ),
+                    );
+                  } else {
+                    return Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: TextField(
+                        controller: _notesController,
+                        maxLines: null,
+                        decoration: InputDecoration(
+                          hintText: 'Enter notes',
+                          border: InputBorder.none,
+                        ),
+                        style: TextStyle(
+                            fontSize: 16, fontFamily: 'monospace'),
+                        onChanged: (newValue) {
+                          _deferredSaver.registerEdit();
+                        },
+                      ),
+                    );
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: _addNewItem,
+          tooltip: 'Add Todo',
+          child: const Icon(Icons.add),
         ),
       ),
     );
@@ -447,6 +452,7 @@ class _MyHomePageState extends State<MyHomePage>
       controller.dispose();
     }
     _notesController.dispose();
+    _notesSaveTimer?.cancel();
     super.dispose();
   }
 }
