@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 import 'package:oauth2/oauth2.dart' as oauth2;
 import 'package:path/path.dart' as path;
-import 'package:url_launcher/url_launcher.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 import 'local_storage.dart';
 
 final _driveFolderName = 'FlowTimer';
@@ -97,7 +97,7 @@ class DriveSync {
       'prompt': 'select_account consent'
     });
 
-    await launch(authorizationUrl.toString());
+    await launchUrlString(authorizationUrl.toString());
 
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 8080);
     final request = await server.first;

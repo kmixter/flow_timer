@@ -7,10 +7,12 @@ import 'package:meta/meta.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:watcher/watcher.dart';
+import 'package:synchronized/synchronized.dart';
 
 final Logger _logger = Logger('LocalStorage');
 
 final _localStorageDir = '.config/FlowTimer';
+final _lock = Lock();
 
 class LocalStorage {
   late Directory _storageDirectory;
@@ -40,15 +42,17 @@ class LocalStorage {
   Metadata get metadata => _metadata;
 
   Future<void> loadMetadata() async {
-    final metadataFile =
-        File(path.join(_storageDirectory.path, 'metadata.json'));
-    _logger.info('Loading $metadataFile');
-    if (await metadataFile.exists()) {
-      final content = await metadataFile.readAsString();
-      _metadata = Metadata.fromJson(jsonDecode(content));
-    } else {
-      _metadata = Metadata();
-    }
+    await _lock.synchronized(() async {
+      final metadataFile =
+          File(path.join(_storageDirectory.path, 'metadata.json'));
+      _logger.info('Loading $metadataFile');
+      if (await metadataFile.exists()) {
+        final content = await metadataFile.readAsString();
+        _metadata = Metadata.fromJson(jsonDecode(content));
+      } else {
+        _metadata = Metadata();
+      }
+    });
   }
 
   Future<void> logFilesInDocumentsDirectory() async {
@@ -65,12 +69,14 @@ class LocalStorage {
   }
 
   Future<void> writeMetadata() async {
-    final metadataFile = File(path.join(_storageDirectory.path, 'metadata.json'));
-    _logger.fine('Starting writing $metadataFile');
-    final tempFile = File('${metadataFile.path}.tmp');
-    await tempFile.writeAsString(jsonEncode(_metadata.toJson()));
-    await tempFile.rename(metadataFile.path);
-    _logger.fine('Finished writing $metadataFile');
+    await _lock.synchronized(() async {
+      final metadataFile = File(path.join(_storageDirectory.path, 'metadata.json'));
+      _logger.fine('Starting writing $metadataFile');
+      final tempFile = File('${metadataFile.path}.tmp');
+      await tempFile.writeAsString(jsonEncode(_metadata.toJson()));
+      await tempFile.rename(metadataFile.path);
+      _logger.fine('Finished writing $metadataFile');
+    });
   }
 
   Future<void> storeRefreshToken(String refreshToken) async {
@@ -83,16 +89,20 @@ class LocalStorage {
   }
 
   Future<Project> loadProject(ProjectMetadata projectMetadata) async {
-    final File localFile = _getProjectFile(projectMetadata);
-    final content = await localFile.readAsString();
-    final project = Project();
-    await project.parse(content);
-    return project;
+    return await _lock.synchronized(() async {
+      final File localFile = _getProjectFile(projectMetadata);
+      final content = await localFile.readAsString();
+      final project = Project();
+      await project.parse(content);
+      return project;
+    });
   }
 
   Future<void> overwriteProjectContents(ProjectMetadata project, String contents) async {
-    final File localFile = _getProjectFile(project);
-    await localFile.writeAsString(contents);
+    await _lock.synchronized(() async {
+      final File localFile = _getProjectFile(project);
+      await localFile.writeAsString(contents);
+    });
   }
 
   StreamSubscription<WatchEvent> watchProject(ProjectMetadata project, void Function(WatchEvent event) callback) {
@@ -108,8 +118,10 @@ class LocalStorage {
   }
 
   Future<DateTime> getProjectFileModifiedTime(ProjectMetadata project) async {
-    final File localFile = _getProjectFile(project);
-    return await localFile.lastModified();
+    return await _lock.synchronized(() async {
+      final File localFile = _getProjectFile(project);
+      return await localFile.lastModified();
+    });
   }
 
   Future<void> updateLastOpenedProject(String name) async {
