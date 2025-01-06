@@ -46,3 +46,4 @@ app.*.map.json
 assets/client_secret.json
 ios/Runner/Info.plist
 notes.txt
+release/
