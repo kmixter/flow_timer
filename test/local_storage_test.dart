@@ -76,9 +76,10 @@ void main() {
   test('markCloudSync updates last cloud sync time', () async {
     localStorage.metadata.projects['TestProject'] =
         ProjectMetadata('TestProject', 'path', null);
-    await localStorage.markCloudSync('TestProject');
+    DateTime syncTime = DateTime(2023, 1, 10);
+    await localStorage.markCloudSync('TestProject', syncTime);
     expect(localStorage.getProjectMetadata('TestProject')?.lastCloudSync,
-        isNotNull);
+        syncTime);
   });
 
   test('isKnownProject returns true for known project', () {
@@ -107,10 +108,14 @@ void main() {
 
     expect(newLocalStorage.refreshToken, 'test_token');
     expect(newLocalStorage.lastOpenedProject, 'TestProject');
-    expect(newLocalStorage.getProjectMetadata('TestProject')?.name, 'TestProject');
-    expect(newLocalStorage.getProjectMetadata('TestProject')?.relativePath, 'relpath');
-    expect(newLocalStorage.getProjectMetadata('TestProject')?.lastCloudSync, testDate);
-    expect(newLocalStorage.getProjectMetadata('AnotherProject')?.name, 'AnotherProject');
+    expect(
+        newLocalStorage.getProjectMetadata('TestProject')?.name, 'TestProject');
+    expect(newLocalStorage.getProjectMetadata('TestProject')?.relativePath,
+        'relpath');
+    expect(newLocalStorage.getProjectMetadata('TestProject')?.lastCloudSync,
+        testDate);
+    expect(newLocalStorage.getProjectMetadata('AnotherProject')?.name,
+        'AnotherProject');
   });
 
   test('getAbsolutePath returns correct absolute path', () async {

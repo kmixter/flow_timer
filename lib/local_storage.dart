@@ -102,11 +102,22 @@ class LocalStorage {
   }
 
   Future<void> overwriteProjectContents(
-      ProjectMetadata project, String contents) async {
+      ProjectMetadata project, String contents,
+      {DateTime? modificationTime}) async {
     await _lock.synchronized(() async {
       final File localFile = _getProjectFile(project);
       await localFile.writeAsString(contents);
+      if (modificationTime != null) {
+        await localFile.setLastModified(modificationTime);
+      }
       onChanges?.call();
+    });
+  }
+
+  Future<String> getProjectContents(ProjectMetadata projectMetadata) async {
+    return await _lock.synchronized(() async {
+      final File localFile = _getProjectFile(projectMetadata);
+      return await localFile.readAsString();
     });
   }
 
@@ -135,8 +146,8 @@ class LocalStorage {
     await writeMetadata();
   }
 
-  Future<void> markCloudSync(String descriptor) async {
-    _metadata.projects[descriptor]!.lastCloudSync = DateTime.now();
+  Future<void> markCloudSync(String descriptor, DateTime syncTime) async {
+    _metadata.projects[descriptor]!.lastCloudSync = syncTime;
     await writeMetadata();
   }
 
@@ -145,10 +156,12 @@ class LocalStorage {
   }
 
   Future<ProjectMetadata> createNewProject(String name,
-      {String contents = ''}) async {
-    ProjectMetadata projectMetadata = ProjectMetadata(name, '$name.txt', null);
+      {String contents = '', DateTime? modificationTime}) async {
+    ProjectMetadata projectMetadata =
+        ProjectMetadata(name, '$name.txt', modificationTime);
     _metadata.projects[name] = projectMetadata;
-    overwriteProjectContents(projectMetadata, contents);
+    await overwriteProjectContents(projectMetadata, contents,
+        modificationTime: modificationTime);
     await writeMetadata();
     return projectMetadata;
   }

@@ -103,6 +103,7 @@ class DeferredSaver {
     _timer?.cancel();
     _timer = Timer(Duration(seconds: 4), () async {
       await saveFile();
+      _timer?.cancel();
     });
   }
 }
@@ -136,7 +137,6 @@ class _MyHomePageState extends State<MyHomePage>
   final List<TextEditingController> _todoControllers = [];
   final TextEditingController _notesController = TextEditingController();
   StreamSubscription? _currentProjectStreamSubscription;
-  bool _isLocalOnly = false;
   Timer? _notesSaveTimer;
   late DeferredSaver _deferredSaver;
 
@@ -150,7 +150,6 @@ class _MyHomePageState extends State<MyHomePage>
     _weekly = _project.weeklies.last;
     _populateTabsForSelectedWeekly();
     _setupFileWatcher();
-    _checkCloudStatus();
     _deferredSaver = DeferredSaver(saveFile: _saveProject);
     super.initState();
     _localStorage.onChanges = () {
@@ -158,9 +157,7 @@ class _MyHomePageState extends State<MyHomePage>
     };
     _driveSync.onLoginStateChanged = () {
       _logger.info('OAuth2 login state changed');
-      setState(() {
-        _checkCloudStatus();
-      });
+      setState(() {});
     };
   }
 
@@ -169,6 +166,7 @@ class _MyHomePageState extends State<MyHomePage>
     _currentProjectStreamSubscription =
         _localStorage.watchProject(_projectMetadata, (event) {
       _logger.info('File changed: ${event.path}');
+      _deferredSaver.registerEdit();
       _loadProjectFromMetadataIntoUI();
     });
   }
@@ -242,9 +240,6 @@ class _MyHomePageState extends State<MyHomePage>
     _localStorage.overwriteProjectContents(_projectMetadata, contents);
     _logger.info('Project saved to ${_projectMetadata.relativePath}');
     await _driveSync.syncProjectToDrive(_projectMetadata.name, contents);
-    setState(() {
-      _checkCloudStatus();
-    });
   }
 
   void _addNewItem() {
@@ -296,12 +291,6 @@ class _MyHomePageState extends State<MyHomePage>
     return projectName;
   }
 
-  void _checkCloudStatus() {
-    setState(() {
-      _isLocalOnly = _driveSync.oauth2Client == null;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return FocusScope(
@@ -320,7 +309,9 @@ class _MyHomePageState extends State<MyHomePage>
           ),
           actions: [
             IconButton(
-              icon: Icon(_isLocalOnly ? Icons.cloud_off : Icons.cloud),
+              icon: Icon(_driveSync.oauth2Client == null
+                  ? Icons.cloud_off
+                  : Icons.cloud),
               onPressed: null,
             ),
             IconButton(
