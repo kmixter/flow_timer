@@ -10,7 +10,7 @@ mkdir -p $TEMP_DIR/flow_timer/usr/share/icons/hicolor/256x256/apps
 
 # Copy built application and icon
 cp -r build/linux/x64/release/bundle/* $TEMP_DIR/flow_timer/usr/local/bin/
-cp assets/logo.jpg $TEMP_DIR/flow_timer/usr/share/icons/hicolor/256x256/apps/flow_timer.jpg
+cp assets/logo.png $TEMP_DIR/flow_timer/usr/share/icons/hicolor/256x256/apps/flow_timer.png
 
 # Create control file
 cat <<EOL > $TEMP_DIR/flow_timer/DEBIAN/control
@@ -22,7 +22,7 @@ Architecture: amd64
 Depends: libgtk-3-0
 Maintainer: Your Name <your.email@example.com>
 Description: Flow Timer
- A brief description of your Flutter application.
+ Plan and time your flow state.
 EOL
 
 # Create desktop entry file
@@ -30,14 +30,14 @@ cat <<EOL > $TEMP_DIR/flow_timer/usr/share/applications/flow_timer.desktop
 [Desktop Entry]
 Name=Flow Timer
 Exec=/usr/local/bin/flow_timer
-Icon=/usr/share/icons/hicolor/256x256/apps/flow_timer.jpg
+Icon=/usr/share/icons/hicolor/256x256/apps/flow_timer.png
 Type=Application
 Categories=Utility;
 EOL
 
 # Build Debian package
 cd release
-dpkg-deb --build $TEMP_DIR/flow_timer flow-timer-20250105.deb
+dpkg-deb --build $TEMP_DIR/flow_timer flow-timer-$(date +%Y%m%d).deb
 
 # Remove the temporary directory
 rm -rf $TEMP_DIR
