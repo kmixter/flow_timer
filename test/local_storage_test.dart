@@ -76,10 +76,9 @@ void main() {
   test('markCloudSync updates last cloud sync time', () async {
     localStorage.metadata.projects['TestProject'] =
         ProjectMetadata('TestProject', 'path', null);
-    DateTime syncTime = DateTime(2023, 1, 10);
-    await localStorage.markCloudSync('TestProject', syncTime);
+    await localStorage.markCloudSync('TestProject');
     expect(localStorage.getProjectMetadata('TestProject')?.lastCloudSync,
-        syncTime);
+        isNotNull);
   });
 
   test('isKnownProject returns true for known project', () {

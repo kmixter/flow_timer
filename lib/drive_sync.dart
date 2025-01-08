@@ -47,6 +47,7 @@ class DriveSync {
 
     if (oauth2Client != null) {
       await postLoginWithOAuth2();
+      onLoginStateChanged?.call();
     }
   }
 
@@ -206,8 +207,7 @@ class DriveSync {
         _logger.severe('Failed to update file: ${updateResponse.body}');
       } else {
         _logger.info('Updated file ID: $fileId');
-        final modifiedTime = await _getDriveFileModifiedTimeWithOAuth2(fileId);
-        await _localStorage.markCloudSync(projectDescriptor, modifiedTime);
+        await _localStorage.markCloudSync(projectDescriptor);
       }
     } else {
       final createResponse = await http.post(
@@ -239,9 +239,7 @@ $contents
       } else {
         final createdFile = jsonDecode(createResponse.body);
         _logger.info('Created file ID: ${createdFile['id']}');
-        final fileId = createdFile['id'];
-        final modifiedTime = await _getDriveFileModifiedTimeWithOAuth2(fileId);
-        await _localStorage.markCloudSync(projectDescriptor, modifiedTime);
+        await _localStorage.markCloudSync(projectDescriptor);
       }
     }
   }
@@ -317,59 +315,36 @@ $contents
       );
 
       final driveFileContents = driveFileResponse.body;
+      final driveFileMetadataResponse = await http.get(
+        Uri.parse(
+            'https://www.googleapis.com/drive/v3/files/${file['id']}?fields=modifiedTime'),
+        headers: headers,
+      );
+      final driveFileMetadata = jsonDecode(driveFileMetadataResponse.body);
       final driveFileModifiedTime =
-          await _getDriveFileModifiedTimeWithOAuth2(file['id']);
+          DateTime.parse(driveFileMetadata['modifiedTime']);
 
       if (localProjectMetadata == null) {
-        _localStorage.createNewProject(name,
-            contents: driveFileContents,
-            modificationTime: driveFileModifiedTime);
+        _localStorage.createNewProject(name, contents: driveFileContents);
         localProjectMetadata = _localStorage.getProjectMetadata(name);
-        _logger
-            .info('Pulled new project: ${localProjectMetadata!.relativePath}');
-        continue;
+        await _localStorage.markCloudSync(name);
+        _logger.info(
+            'Created local project: ${localProjectMetadata!.relativePath}');
       }
 
       final localFileModifiedTime =
           await _localStorage.getProjectFileModifiedTime(localProjectMetadata);
-      final lastSyncModifiedTime = localProjectMetadata.lastCloudSync;
       _logger.info(
-          'For $name, comparing last sync ($lastSyncModifiedTime) vs local modified ($localFileModifiedTime) vs drive modified ($driveFileModifiedTime)');
-
-      if ((lastSyncModifiedTime == null ||
-              localFileModifiedTime == lastSyncModifiedTime) &&
-          localFileModifiedTime.isBefore(driveFileModifiedTime)) {
-        _logger.info('Pulling drive project change to unchanged local file');
+          'Comparing local ($localFileModifiedTime) vs drive ($driveFileModifiedTime)');
+      if (driveFileModifiedTime.isAfter(localFileModifiedTime)) {
+        _logger.info('Synchronizing local file to drive');
         await _localStorage.overwriteProjectContents(
-            localProjectMetadata, driveFileContents,
-            modificationTime: driveFileModifiedTime);
-        await _localStorage.markCloudSync(name, driveFileModifiedTime);
-      } else if (lastSyncModifiedTime != null &&
-          localFileModifiedTime.isAfter(lastSyncModifiedTime) &&
-          driveFileModifiedTime == lastSyncModifiedTime) {
-        _logger.info('Pushing local change to unchanged drive file');
-        await syncProjectToDrive(
-            name, await _localStorage.getProjectContents(localProjectMetadata));
-      } else if (lastSyncModifiedTime != null &&
-          localFileModifiedTime.isAfter(lastSyncModifiedTime) &&
-          driveFileModifiedTime.isAfter(lastSyncModifiedTime)) {
-        _logger.warning(
-            'Conflict in $name: both local and drive were updated since last sync');
+            localProjectMetadata, driveFileContents);
+        await _localStorage.markCloudSync(name);
+      } else {
+        _logger
+            .info('Local file is newer than drive, letting user manually save');
       }
     }
-  }
-
-  Future<DateTime> _getDriveFileModifiedTimeWithOAuth2(String fileId) async {
-    final headers = {
-      'Authorization': 'Bearer ${oauth2Client!.credentials.accessToken}',
-      'Content-Type': 'application/json',
-    };
-    final metadataResponse = await http.get(
-      Uri.parse(
-          'https://www.googleapis.com/drive/v3/files/$fileId?fields=modifiedTime'),
-      headers: headers,
-    );
-    final metadata = jsonDecode(metadataResponse.body);
-    return DateTime.parse(metadata['modifiedTime']);
   }
 }
