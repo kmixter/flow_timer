@@ -200,37 +200,64 @@ class _MyHomePageState extends State<MyHomePage>
   void _addTodoControllerAndFocusNode(String text) {
     final controller = TextEditingController(text: text);
     final focusNode = FocusNode();
-    final newIndex = _todoControllers.length;
-    focusNode.addListener(() async {
-      if (focusNode.hasFocus) return;
-      final text = controller.text.trim();
-      Todo? todo;
-      try {
-        todo = Todo.fromLine(text);
-      } catch (e) {
-        todo = Todo(dayNumber: -1, desc: text);
-      }
-      bool needsRecompute = false;
-      if (newIndex == _weekly.todos.length) {
-        _weekly.todos.add(todo);
-        needsRecompute = true;
-      }
-      if (!_weekly.todos[newIndex].equals(todo)) {
-        _weekly.todos[newIndex] = todo;
-        needsRecompute = true;
-      }
-      if (!needsRecompute) {
-        return;
-      }
+    final capturedLength = _todoControllers.length;
 
-      _weekly.recompute();
-      for (var i = 0; i < _todoControllers.length; i++) {
-        _todoControllers[i].text = _weekly.todos[i].toLine();
-      }
-      _deferredSaver.registerEdit();
+    focusNode.addListener(() {
+      if (focusNode.hasFocus) return;
+      _handleTodoFocusExit(focusNode, controller, capturedLength);
     });
+
     _todoControllers.add(controller);
     _focusNodes.add(focusNode);
+  }
+
+  void _handleTodoFocusExit(
+      FocusNode focusNode, TextEditingController controller, int index) async {
+    final text = controller.text.trim();
+    bool needsRecompute = false;
+
+    if (text.isEmpty) {
+      _removeTodoAt(index);
+      needsRecompute = true;
+    } else {
+      needsRecompute = _updateTodoAt(index, text);
+    }
+
+    if (needsRecompute) {
+      _recomputeTodos();
+    }
+  }
+
+  void _removeTodoAt(int index) {
+    _weekly.todos.removeAt(index);
+    _todoControllers.removeLast();
+    _focusNodes.removeLast();
+  }
+
+  bool _updateTodoAt(int index, String text) {
+    Todo todo;
+    try {
+      todo = Todo.fromLine(text);
+    } catch (e) {
+      todo = Todo(dayNumber: -1, desc: text);
+    }
+
+    bool needsRecompute = false;
+    if (!_weekly.todos[index].equals(todo)) {
+      _weekly.todos[index] = todo;
+      needsRecompute = true;
+    }
+
+    return needsRecompute;
+  }
+
+  void _recomputeTodos() {
+    _weekly.recompute();
+    for (var i = 0; i < _todoControllers.length; i++) {
+      _todoControllers[i].text = _weekly.todos[i].toLine();
+    }
+    _deferredSaver.registerEdit();
+    setState(() {});
   }
 
   Future<void> _saveProject() async {
@@ -245,6 +272,10 @@ class _MyHomePageState extends State<MyHomePage>
   void _addNewItem() {
     setState(() {
       _addTodoControllerAndFocusNode('');
+      _weekly.todos.add(Todo(dayNumber: -1, desc: ''));
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNodes.last.requestFocus();
     });
   }
 
