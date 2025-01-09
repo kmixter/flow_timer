@@ -32,7 +32,7 @@ mkdir -p $TEMP_DIR/flow_timer/usr/share/icons/hicolor/256x256/apps
 
 # Copy built application and icon
 cp -r build/linux/x64/release/bundle/* $TEMP_DIR/flow_timer/usr/local/bin/
-cp assets/logo.png $TEMP_DIR/flow_timer/usr/share/icons/hicolor/256x256/apps/flow_timer.png
+cp assets/icon/icon_linux.png $TEMP_DIR/flow_timer/usr/share/icons/hicolor/256x256/apps/flow_timer.png
 
 # Create control file
 cat <<EOL > $TEMP_DIR/flow_timer/DEBIAN/control
