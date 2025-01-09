@@ -35,6 +35,10 @@ sudo apt-get install zenity
 You will need to create an appopriate Google Cloud project with drive.file permission
 which is required for cloud synchronizing.
 
+On MacOS:
+
+brew install create-dmg
+
 # Icons
 
 To update iOS/Mac icons use:
