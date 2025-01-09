@@ -4,6 +4,8 @@ set -e
 FORCE=false
 NOBUILD=false
 
+source "$(dirname "$0")/common.sh"
+
 usage() {
   echo "Usage: $0 [--force] [--nobuild] [-h]"
   echo "  --force    Ignore uncommitted changes"
@@ -22,34 +24,11 @@ while [[ "$#" -gt 0 ]]; do
   shift
 done
 
-# Verify that the current checkout is unchanged
-if ! $FORCE && ! git diff-index --quiet HEAD --; then
-  echo "There are uncommitted changes. Please commit or stash them before releasing."
-  exit 1
-fi
+verify_git_status
 
-if ! git describe --tags --exact-match 2>/dev/null; then
-  echo "No tag found on the current commit. Please tag the commit with a version like 'release-x.y.z'."
-  exit 1
-fi
+prepare_build
+clean_build
 
-# Get the current tag
-TAG=$(git describe --tags --exact-match 2>/dev/null)
-
-if [[ $? -ne 0 ]]; then
-  echo "No tag found on the current commit. Please tag the commit with a version like 'release-x.y.z'."
-  exit 1
-fi
-
-# Extract version from the tag
-if [[ $TAG =~ ^release-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-  VERSION=${BASH_REMATCH[1]}
-else
-  echo "Tag format is incorrect. Please use 'release-x.y.z'."
-  exit 1
-fi
-
-# Build the application if --nobuild is not set
 if ! $NOBUILD; then
   flutter build linux --profile
 fi

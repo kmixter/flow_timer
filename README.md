@@ -46,3 +46,4 @@ flutter pub run flutter_launcher_icons:main
 To release, create a new release-x.y.z tag and use the script:
 
 scripts/build_linux_release.sh
+scripts/build_macos_release.sh
