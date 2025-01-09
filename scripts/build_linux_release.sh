@@ -1,9 +1,35 @@
 #!/bin/bash
 set -e
 
+FORCE=false
+NOBUILD=false
+
+usage() {
+  echo "Usage: $0 [--force] [--nobuild] [-h]"
+  echo "  --force    Ignore uncommitted changes"
+  echo "  --nobuild  Skip the build step"
+  echo "  -h         Show this help message"
+  exit 1
+}
+
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    --force) FORCE=true ;;
+    --nobuild) NOBUILD=true ;;
+    -h) usage ;;
+    *) echo "Unknown parameter passed: $1"; usage ;;
+  esac
+  shift
+done
+
 # Verify that the current checkout is unchanged
-if ! git diff-index --quiet HEAD --; then
+if ! $FORCE && ! git diff-index --quiet HEAD --; then
   echo "There are uncommitted changes. Please commit or stash them before releasing."
+  exit 1
+fi
+
+if ! git describe --tags --exact-match 2>/dev/null; then
+  echo "No tag found on the current commit. Please tag the commit with a version like 'release-x.y.z'."
   exit 1
 fi
 
@@ -21,6 +47,11 @@ if [[ $TAG =~ ^release-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
 else
   echo "Tag format is incorrect. Please use 'release-x.y.z'."
   exit 1
+fi
+
+# Build the application if --nobuild is not set
+if ! $NOBUILD; then
+  flutter build linux --profile
 fi
 
 # Create a temporary directory
