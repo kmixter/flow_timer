@@ -108,6 +108,13 @@ class DeferredSaver {
   }
 }
 
+class FocusState {
+  final int? focusedTodoIndex;
+  final int? cursorPosition;
+
+  FocusState({this.focusedTodoIndex, this.cursorPosition});
+}
+
 class MyHomePage extends StatefulWidget {
   final LocalStorage localStorage;
   final DriveSync driveSync;
@@ -133,11 +140,11 @@ class _MyHomePageState extends State<MyHomePage>
   late ProjectMetadata _projectMetadata;
   late Project _project;
   late Weekly _weekly;
-  final List<FocusNode> _focusNodes = [];
+  final List<FocusNode> _todoFocusNodes = [];
   final List<TextEditingController> _todoControllers = [];
+  final FocusNode _notesFocusNode = FocusNode();
   final TextEditingController _notesController = TextEditingController();
   StreamSubscription? _currentProjectStreamSubscription;
-  Timer? _notesSaveTimer;
   late DeferredSaver _deferredSaver;
 
   @override
@@ -166,9 +173,47 @@ class _MyHomePageState extends State<MyHomePage>
     _currentProjectStreamSubscription =
         _localStorage.watchProject(_projectMetadata, (event) {
       _logger.info('File changed: ${event.path}');
+      final focusState = _saveFocusState();
       _deferredSaver.registerEdit();
-      _loadProjectFromMetadataIntoUI();
+      _loadProjectFromMetadataIntoUI().then((_) {
+        _restoreFocusState(focusState);
+      });
     });
+  }
+
+  FocusState _saveFocusState() {
+    for (int i = 0; i < _todoFocusNodes.length; i++) {
+      if (_todoFocusNodes[i].hasFocus) {
+        return FocusState(
+          focusedTodoIndex: i,
+          cursorPosition: _todoControllers[i].selection.baseOffset,
+        );
+      }
+    }
+    if (_notesFocusNode.hasFocus) {
+      return FocusState(
+        focusedTodoIndex: null,
+        cursorPosition: _notesController.selection.baseOffset,
+      );
+    }
+    return FocusState();
+  }
+
+  void _restoreFocusState(FocusState focusState) {
+    if (focusState.focusedTodoIndex != null &&
+        focusState.focusedTodoIndex! < _todoFocusNodes.length) {
+      _todoFocusNodes[focusState.focusedTodoIndex!].requestFocus();
+      _todoControllers[focusState.focusedTodoIndex!].selection =
+          TextSelection.collapsed(
+        offset: focusState.cursorPosition ??
+            _todoControllers[focusState.focusedTodoIndex!].text.length,
+      );
+    } else if (focusState.cursorPosition != null) {
+      _notesController.selection = TextSelection.collapsed(
+        offset: focusState.cursorPosition ?? _notesController.text.length,
+      );
+      _notesFocusNode.requestFocus();
+    }
   }
 
   Future<void> _loadProjectFromMetadataIntoUI() async {
@@ -189,7 +234,7 @@ class _MyHomePageState extends State<MyHomePage>
   void _populateTabsForSelectedWeekly() {
     setState(() {
       _todoControllers.clear();
-      _focusNodes.clear();
+      _todoFocusNodes.clear();
       for (var todo in _weekly.todos) {
         _addTodoControllerAndFocusNode(todo.toLine());
       }
@@ -208,7 +253,7 @@ class _MyHomePageState extends State<MyHomePage>
     });
 
     _todoControllers.add(controller);
-    _focusNodes.add(focusNode);
+    _todoFocusNodes.add(focusNode);
   }
 
   void _handleTodoFocusExit(
@@ -231,7 +276,7 @@ class _MyHomePageState extends State<MyHomePage>
   void _removeTodoAt(int index) {
     _weekly.todos.removeAt(index);
     _todoControllers.removeLast();
-    _focusNodes.removeLast();
+    _todoFocusNodes.removeLast();
   }
 
   bool _updateTodoAt(int index, String text) {
@@ -275,7 +320,7 @@ class _MyHomePageState extends State<MyHomePage>
       _weekly.todos.add(Todo(dayNumber: -1, desc: ''));
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNodes.last.requestFocus();
+      _todoFocusNodes.last.requestFocus();
     });
   }
 
@@ -439,7 +484,7 @@ class _MyHomePageState extends State<MyHomePage>
                           vertical: 0, horizontal: 8.0),
                       child: TextField(
                         controller: _todoControllers[index],
-                        focusNode: _focusNodes[index],
+                        focusNode: _todoFocusNodes[index],
                         decoration: InputDecoration(
                           hintText: 'Enter todo',
                           fillColor: todo != null && todo.startTime != null
@@ -456,6 +501,7 @@ class _MyHomePageState extends State<MyHomePage>
                       padding: const EdgeInsets.all(8.0),
                       child: TextField(
                         controller: _notesController,
+                        focusNode: _notesFocusNode,
                         maxLines: null,
                         decoration: InputDecoration(
                           hintText: 'Enter notes',
@@ -488,7 +534,7 @@ class _MyHomePageState extends State<MyHomePage>
       controller.dispose();
     }
     _notesController.dispose();
-    _notesSaveTimer?.cancel();
+    _notesFocusNode.dispose();
     super.dispose();
   }
 }
