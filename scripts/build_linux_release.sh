@@ -59,7 +59,7 @@ EOL
 
 # Build Debian package
 cd release
-dpkg-deb --build $TEMP_DIR/flow_timer flow-timer-$VERSION-$(date +%Y%m%d).deb
+dpkg-deb --build $TEMP_DIR/flow_timer flow-timer-$VERSION.deb
 
 # Remove the temporary directory
 rm -rf $TEMP_DIR
