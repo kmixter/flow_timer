@@ -15,6 +15,7 @@ class Todo {
   static final RegExp dueDateRe = RegExp(r' <=(\d+)/(\d+)\b');
   static final RegExp startTimeRe = RegExp(r'@(\d+):(\d+)');
   static final RegExp spentTimeRe = RegExp(r' \+([\d\.]+)(m|hr)');
+  static final RegExp coinRe = RegExp(r'\b([\d\.]+)c\b');
 
   int dayNumber = -1; // -1 for pending, 0 for Monday, 1 for Tuesday, etc.
   String desc = '';
@@ -23,6 +24,7 @@ class Todo {
   int? daysLeft;
   TimeOfDay? startTime;
   double? spentMinutes;
+  double? coins;
 
   Todo({
     required this.dayNumber,
@@ -31,6 +33,7 @@ class Todo {
     this.dueDate,
     this.startTime,
     this.spentMinutes,
+    this.coins,
   });
 
   Todo.fromLine(String line, {DateTime? now}) {
@@ -48,6 +51,7 @@ class Todo {
         .replaceAll(dueDateRe, '')
         .replaceAll(startTimeRe, '')
         .replaceAll(spentTimeRe, '')
+        .replaceAll(coinRe, '')
         .trim();
 
     // Parse duration
@@ -85,6 +89,12 @@ class Todo {
         spentMinutes = spentMinutes! * 60;
       }
     }
+
+    // Parse coins
+    final coinMatch = coinRe.firstMatch(line);
+    if (coinMatch != null) {
+      coins = double.parse(coinMatch.group(1)!);
+    }
   }
 
   void computeDaysLeft({DateTime? now}) {
@@ -118,12 +128,16 @@ class Todo {
     if (spentMinutes != null) {
       line += ' +${formatMinutes(spentMinutes!)}';
     }
+    if (coins != null) {
+      line +=
+          ' ${coins!.toStringAsFixed(2).replaceAll(RegExp(r'\.?0*$'), '')}c';
+    }
     if (dueDate != null) {
       line += ' <=${dueDate!.month}/${dueDate!.day}';
     }
 
     if (dayNumber == -1 &&
-        (startTime != null || isElapsed || hasCompletionRate)) {
+        (startTime != null || isElapsed || hasCompletionRate || hasCoinRate)) {
       final annotations = <String>[];
       if (startTime != null) {
         annotations.add(
@@ -133,6 +147,9 @@ class Todo {
         annotations.add('ELAPSED!');
       } else if (hasCompletionRate) {
         annotations.add('${formatMinutes(getCompletionRate())}/d');
+      }
+      if (hasCoinRate) {
+        annotations.add('${getCoinRate().round()}c/hr');
       }
       line = '${line.padRight(65)} ##${annotations.join(' ')}';
     }
@@ -154,11 +171,22 @@ class Todo {
 
   bool get hasCompletionRate => daysLeft != null && duration != null;
 
+  bool get isDone => dayNumber >= 0;
+
   double getCompletionRate() {
     if (!hasCompletionRate) {
       return 0;
     }
     return duration! / daysLeft!;
+  }
+
+  bool get hasCoinRate => coins != null && duration != null;
+
+  double getCoinRate() {
+    if (!hasCoinRate) {
+      return 0;
+    }
+    return coins! / (duration! / 60); // Convert duration to hours
   }
 
   static bool isTodoLine(String line) {
@@ -172,6 +200,7 @@ class Todo {
         dueDate == other.dueDate &&
         daysLeft == other.daysLeft &&
         startTime == other.startTime &&
-        spentMinutes == other.spentMinutes;
+        spentMinutes == other.spentMinutes &&
+        coins == other.coins;
   }
 }

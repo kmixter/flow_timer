@@ -174,9 +174,9 @@ Notes for 12/10.
       expect(weekly.todos[1].desc, 'Task 1');
       expect(weekly.todos[1].getCompletionRate(), 1);
 
-      expect(weekly.getTotalsAnnotation(), '∑: 3m/d');
+      expect(weekly.getTotalsAnnotation(), '∑: 3m/d 12m');
       expect(weekly.todoLine,
-          'TODOs:                                                            ## ∑: 3m/d');
+          'TODOs:                                                            ##∑: 3m/d 12m');
     });
 
     test('createWeeklyIfNeeded creates a new weekly if project is empty', () {
@@ -206,6 +206,81 @@ Notes for 12/10.
       expect(newWeekly.todos[1].desc, 'Task 2');
       expect(previousWeekly.todos.length, 1);
       expect(previousWeekly.todos[0].desc, 'Task 3');
+    });
+
+    test('sort TODOs with due dates and different remaining times', () {
+      final project = Project();
+      final weekly =
+          project.createWeekly(DateTime(2024, 10, 2)); // October 2, 2024
+      final fixedDate = DateTime(2024, 10, 2);
+      weekly.todos.add(Todo.fromLine(
+          '* TODO with 120 minutes remaining 120m <=10/7',
+          now: fixedDate));
+      weekly.todos.add(Todo.fromLine(
+          '* TODO with 60 minutes remaining 60m <=10/7',
+          now: fixedDate));
+      weekly.todos.add(Todo.fromLine(
+          '* TODO with 180 minutes remaining 180m <=10/7',
+          now: fixedDate));
+
+      project.recompute(now: DateTime(2024, 10, 2));
+
+      expect(weekly.todoLine,
+          'TODOs:                                                            ##∑: 1hr/d 6hr');
+      expect(weekly.todos[0].desc, 'TODO with 180 minutes remaining');
+      expect(weekly.todos[1].desc, 'TODO with 120 minutes remaining');
+      expect(weekly.todos[2].desc, 'TODO with 60 minutes remaining');
+    });
+
+    test('sort TODOs with coins and varying times left', () {
+      final project = Project();
+      final weekly =
+          project.createWeekly(DateTime(2024, 10, 2)); // October 2, 2024
+      final fixedDate = DateTime(2024, 10, 2);
+      weekly.todos.add(Todo.fromLine(
+          '* TODO with 120 minutes remaining 120m 50c',
+          now: fixedDate));
+      weekly.todos.add(Todo.fromLine(
+          '* TODO with 60 minutes remaining 60m 100c',
+          now: fixedDate));
+      weekly.todos.add(Todo.fromLine(
+          '* TODO with 180 minutes remaining 180m 90c',
+          now: fixedDate));
+
+      project.recompute(now: DateTime(2024, 10, 2));
+
+      expect(weekly.todoLine,
+          'TODOs:                                                            ##∑: 6hr 240c 40c/hr');
+      expect(weekly.todos[0].desc, 'TODO with 60 minutes remaining');
+      expect(weekly.todos[1].desc, 'TODO with 180 minutes remaining');
+      expect(weekly.todos[2].desc, 'TODO with 120 minutes remaining');
+    });
+
+    test('sort TODOs of different forms', () {
+      final project = Project();
+      final weekly =
+          project.createWeekly(DateTime(2024, 10, 2)); // October 2, 2024
+      final fixedDate = DateTime(2024, 10, 2);
+      weekly.todos.add(Todo.fromLine('* TODO elapsed <=10/1', now: fixedDate));
+      weekly.todos.add(Todo.fromLine('* First boring TODO', now: fixedDate));
+      weekly.todos.add(
+          Todo.fromLine('M TODO finished +15m 15m 16c <=9/1', now: fixedDate));
+      weekly.todos.add(Todo.fromLine('* TODO with completion rate 20m <=10/7',
+          now: fixedDate));
+      weekly.todos.add(Todo.fromLine('* Second boring TODO', now: fixedDate));
+      weekly.todos
+          .add(Todo.fromLine('* TODO with coin rate 20m 50c', now: fixedDate));
+
+      project.recompute(now: fixedDate);
+
+      expect(weekly.todoLine,
+          'TODOs:                                                            ##∑: ELAPSED! 40m 50c 150c/hr');
+      expect(weekly.todos[0].desc, 'TODO elapsed');
+      expect(weekly.todos[1].desc, 'TODO with completion rate');
+      expect(weekly.todos[2].desc, 'TODO with coin rate');
+      expect(weekly.todos[3].desc, 'First boring TODO');
+      expect(weekly.todos[4].desc, 'Second boring TODO');
+      expect(weekly.todos[5].desc, 'TODO finished');
     });
   });
 }

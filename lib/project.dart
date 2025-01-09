@@ -93,8 +93,9 @@ class Project {
 
   void createWeeklyIfNeeded({DateTime? now}) {
     final currentDate = now ?? DateTime.now();
-    final lastMondayDate = DateTime(currentDate.year, currentDate.month, currentDate.day)
-        .subtract(Duration(days: currentDate.weekday - DateTime.monday));
+    final lastMondayDate =
+        DateTime(currentDate.year, currentDate.month, currentDate.day)
+            .subtract(Duration(days: currentDate.weekday - DateTime.monday));
     if (weeklies.isEmpty || weeklies.last.date.isBefore(lastMondayDate)) {
       weeklies.add(Weekly(date: lastMondayDate));
       // Bring forward pending tasks from last week and remove them from last week
@@ -198,7 +199,7 @@ class Weekly {
     for (var todo in todos) {
       todo.computeDaysLeft(now: now);
     }
-    sortTodos();
+    sortTodos(now: now);
     final totalsAnnotation = getTotalsAnnotation();
     if (totalsAnnotation == null) {
       todoLine = 'TODOs:';
@@ -207,7 +208,7 @@ class Weekly {
     }
   }
 
-  void sortTodos() {
+  void sortTodos({DateTime? now}) {
     final pending = <Todo>[];
     final completedByDay = List.generate(7, (_) => <Todo>[]);
 
@@ -219,8 +220,7 @@ class Weekly {
       }
     }
 
-    pending.sort((a, b) =>
-        _getPendingTodoPriority(b) > _getPendingTodoPriority(a) ? 1 : -1);
+    pending.sort((a, b) => _comparePendingTodos(a, b, now: now));
 
     final sortedTodos = <Todo>[];
     sortedTodos.addAll(pending);
@@ -231,33 +231,77 @@ class Weekly {
     todos = sortedTodos;
   }
 
-  static double _getPendingTodoPriority(Todo todo) {
-    if (!todo.hasCompletionRate) {
-      return -1;
+  int _comparePendingTodos(Todo a, Todo b, {DateTime? now}) {
+    if (a.isElapsed != b.isElapsed) {
+      return a.isElapsed ? -1 : 1;
     }
-    if (todo.isElapsed) {
-      return double.maxFinite;
+    if (a.hasCompletionRate != b.hasCompletionRate) {
+      return a.hasCompletionRate ? -1 : 1;
     }
-    return todo.getCompletionRate();
+    if (a.hasCompletionRate && b.hasCompletionRate) {
+      return b.getCompletionRate().compareTo(a.getCompletionRate());
+    }
+    if (a.hasCoinRate != b.hasCoinRate) {
+      return a.hasCoinRate ? -1 : 1;
+    }
+    if (a.hasCoinRate && b.hasCoinRate) {
+      return b.getCoinRate().compareTo(a.getCoinRate());
+    }
+    return 0;
   }
 
   String? getTotalsAnnotation() {
-    if (todos.any((todo) => todo.isElapsed)) {
-      return '∑: ELAPSED!';
-    }
     double sumCompletionRate = 0;
+    double totalTimeRemaining = 0;
+    double totalCoinsRemaining = 0;
+    double totalCoins = 0;
+    double totalHours = 0;
+
     for (final todo in todos) {
       sumCompletionRate += todo.getCompletionRate();
+      if (!todo.isDone) {
+        if (todo.duration != null) {
+          totalTimeRemaining += todo.duration!;
+        }
+        if (todo.coins != null) {
+          totalCoinsRemaining += todo.coins!;
+        }
+        if (todo.duration != null && todo.coins != null) {
+          totalCoins += todo.coins!;
+          totalHours += todo.duration! / 60;
+        }
+      }
     }
-    if (sumCompletionRate == 0) {
+
+    final annotations = <String>[];
+    if (todos.any((todo) => todo.isElapsed)) {
+      annotations.add('ELAPSED!');
+    } else if (sumCompletionRate > 0) {
+      annotations.add('${Todo.formatMinutes(sumCompletionRate)}/d');
+    }
+    if (totalTimeRemaining > 0) {
+      annotations.add(Todo.formatMinutes(totalTimeRemaining));
+    }
+    if (totalCoinsRemaining > 0) {
+      annotations.add(
+          '${totalCoinsRemaining.toStringAsFixed(2).replaceAll(RegExp(r'\.?0*$'), '')}c');
+    }
+    if (totalHours > 0) {
+      final coinRate = totalCoins / totalHours;
+      annotations.add(
+          '${coinRate.toStringAsFixed(2).replaceAll(RegExp(r'\.?0*$'), '')}c/hr');
+    }
+
+    if (annotations.isEmpty) {
       return null;
     }
-    return '∑: ${Todo.formatMinutes(sumCompletionRate)}/d';
+
+    return '∑: ${annotations.join(' ')}';
   }
 
   static String _formatAnnotations(String line, List<String> annotations) {
     line = _stripAnnotations(line);
-    return '${line.padRight(65)} ## ${annotations.join(' ')}';
+    return '${line.padRight(65)} ##${annotations.join(' ')}';
   }
 
   static String _stripAnnotations(String line) {
