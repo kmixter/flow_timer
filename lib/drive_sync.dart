@@ -56,15 +56,7 @@ class DriveSync {
     onLoginStateChanged?.call();
   }
 
-  Future<void> _loginWithGoogleSignIn() async {
-    final googleSignIn = GoogleSignIn.standard(scopes: _scopes);
-    final account = await googleSignIn.signIn();
-    _logger.fine('currentUser=$account');
-
-    if (account == null) {
-      return;
-    }
-
+  Future<void> _authenticateWithGoogle(GoogleSignInAccount account) async {
     final GoogleSignInAuthentication googleAuth = await account.authentication;
 
     final oauth2.Credentials credentials = oauth2.Credentials(
@@ -79,9 +71,21 @@ class DriveSync {
     if (!oauth2Client!.credentials.canRefresh) {
       _logger.warning('No refresh token received');
     } else {
-      await _localStorage
-          .storeRefreshToken(oauth2Client!.credentials.refreshToken!);
+      await _localStorage.storeRefreshToken(oauth2Client!.credentials.refreshToken!);
     }
+    onLoginStateChanged?.call();
+  }
+
+  Future<void> _loginWithGoogleSignIn() async {
+    final googleSignIn = GoogleSignIn.standard(scopes: _scopes);
+    final account = await googleSignIn.signIn();
+    _logger.fine('currentUser=$account');
+
+    if (account == null) {
+      return;
+    }
+
+    await _authenticateWithGoogle(account);
   }
 
   Future<void> _loginWithBrowserAndLocalhost() async {
@@ -143,31 +147,42 @@ class DriveSync {
   }
 
   Future<void> refreshAccessToken() async {
-    final refreshToken = _localStorage.refreshToken;
-    if (refreshToken != null) {
-      final credentials = oauth2.Credentials(
-        '',
-        refreshToken: refreshToken,
-        tokenEndpoint: Uri.parse(_credentials['web']['token_uri']),
-      );
+    if (Platform.isLinux || Platform.isMacOS) {
+      final refreshToken = _localStorage.refreshToken;
+      if (refreshToken != null) {
+        final credentials = oauth2.Credentials(
+          '',
+          refreshToken: refreshToken,
+          tokenEndpoint: Uri.parse(_credentials['web']['token_uri']),
+        );
 
-      final client = oauth2.Client(credentials,
-          identifier: _credentials['web']['client_id'],
-          secret: _credentials['web']['client_secret']);
-      try {
-        await client.refreshCredentials();
-      } catch (e) {
-        _logger
-            .warning('Exception while trying to refresh oauth2 access token');
-        oauth2Client = null;
-        return;
+        final client = oauth2.Client(credentials,
+            identifier: _credentials['web']['client_id'],
+            secret: _credentials['web']['client_secret']);
+        try {
+          await client.refreshCredentials();
+        } catch (e) {
+          _logger
+              .warning('Exception while trying to refresh oauth2 access token');
+          oauth2Client = null;
+          return;
+        }
+
+        oauth2Client = client;
+        onLoginStateChanged?.call();
+        _logger.info('Refreshed access token: ${client.credentials.accessToken}');
+
+        await _localStorage.storeRefreshToken(client.credentials.refreshToken!);
       }
-
-      oauth2Client = client;
-      onLoginStateChanged?.call();
-      _logger.info('Refreshed access token: ${client.credentials.accessToken}');
-
-      await _localStorage.storeRefreshToken(client.credentials.refreshToken!);
+    } else {
+      final googleSignIn = GoogleSignIn.standard(scopes: _scopes);
+      final account = await googleSignIn.signInSilently();
+      if (account != null) {
+        await _authenticateWithGoogle(account);
+      } else {
+        _logger.warning('Failed to silently sign in with Google');
+        oauth2Client = null;
+      }
     }
   }
 

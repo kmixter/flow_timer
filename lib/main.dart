@@ -388,10 +388,7 @@ class _MyHomePageState extends State<MyHomePage>
               icon: Icon(_driveSync.oauth2Client == null
                   ? Icons.cloud_off
                   : Icons.cloud),
-              onPressed: null,
-            ),
-            IconButton(
-              icon: const Icon(Icons.login),
+              tooltip: _driveSync.oauth2Client == null ? 'Login' : 'Connected',
               onPressed:
                   _driveSync.oauth2Client == null ? _driveSync.login : null,
             ),
