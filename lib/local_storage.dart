@@ -8,11 +8,14 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:watcher/watcher.dart';
 import 'package:synchronized/synchronized.dart';
+import 'package:crypto/crypto.dart';
 
 final Logger _logger = Logger('LocalStorage');
 
 final _localStorageDir = '.config/FlowTimer';
 final _lock = Lock();
+
+const metadataVersion = 0.2;
 
 class LocalStorage {
   late Directory _storageDirectory;
@@ -53,6 +56,9 @@ class LocalStorage {
       } else {
         _metadata = Metadata();
       }
+      if (_metadata.version == 0.1) {
+        throw Exception('Incompatible metadata version: ${_metadata.version}');
+      }
       onChanges?.call();
     });
   }
@@ -74,11 +80,9 @@ class LocalStorage {
     await _lock.synchronized(() async {
       final metadataFile =
           File(path.join(_storageDirectory.path, 'metadata.json'));
-      _logger.fine('Starting writing $metadataFile');
       final tempFile = File('${metadataFile.path}.tmp');
       await tempFile.writeAsString(jsonEncode(_metadata.toJson()));
       await tempFile.rename(metadataFile.path);
-      _logger.fine('Finished writing $metadataFile');
     });
   }
 
@@ -89,6 +93,21 @@ class LocalStorage {
 
   File _getProjectFile(ProjectMetadata project) {
     return File(getAbsolutePath(project));
+  }
+
+  Future<String> getProjectFileMd5Digest(ProjectMetadata project) async {
+    return await _lock.synchronized(() async {
+      final File localFile = _getProjectFile(project);
+      final bytes = await localFile.readAsBytes();
+      return md5.convert(bytes).toString();
+    });
+  }
+
+  Future<String> getProjectContents(ProjectMetadata project) async {
+    return await _lock.synchronized(() async {
+      final File localFile = _getProjectFile(project);
+      return await localFile.readAsString();
+    });
   }
 
   Future<Project> loadProject(ProjectMetadata projectMetadata) async {
@@ -135,8 +154,14 @@ class LocalStorage {
     await writeMetadata();
   }
 
-  Future<void> markCloudSync(String descriptor) async {
-    _metadata.projects[descriptor]!.lastCloudSync = DateTime.now();
+  Future<void> updateDriveDigest(
+      ProjectMetadata project, String driveDigest) async {
+    project.driveDigest = driveDigest;
+    await writeMetadata();
+  }
+
+  Future<void> updateFileId(ProjectMetadata project, String driveFileId) async {
+    project.driveFileId = driveFileId;
     await writeMetadata();
   }
 
@@ -145,16 +170,23 @@ class LocalStorage {
   }
 
   Future<ProjectMetadata> createNewProject(String name,
-      {String contents = ''}) async {
-    ProjectMetadata projectMetadata = ProjectMetadata(name, '$name.txt', null);
+      {String contents = '', String? driveFileId, String? driveDigest}) async {
+    ProjectMetadata projectMetadata = ProjectMetadata(name, '$name.txt',
+        driveFileId: driveFileId, driveDigest: driveDigest);
     _metadata.projects[name] = projectMetadata;
-    overwriteProjectContents(projectMetadata, contents);
+    await overwriteProjectContents(projectMetadata, contents);
     await writeMetadata();
     return projectMetadata;
   }
 
   ProjectMetadata? getProjectMetadata(String name) {
     return _metadata.projects[name];
+  }
+
+  ProjectMetadata? getProjectMetadataFromFileId(String fileId) {
+    return _metadata.projects.values.cast<ProjectMetadata?>().firstWhere(
+        (project) => project!.driveFileId == fileId,
+        orElse: () => null);
   }
 
   ProjectMetadata? getFirstProjectMetadata() {
@@ -170,7 +202,7 @@ class LocalStorage {
 }
 
 class Metadata {
-  final double version = 0.1;
+  double version = metadataVersion;
   String? refreshToken;
   String? lastOpenedProject;
   Map<String, ProjectMetadata> projects = {};
@@ -178,6 +210,7 @@ class Metadata {
   Metadata();
 
   Metadata.fromJson(Map<String, dynamic> json) {
+    version = json['version'];
     refreshToken = json['refreshToken'];
     lastOpenedProject = json['lastOpenedProject'];
     final projectsJson = json['projects'];
@@ -189,6 +222,7 @@ class Metadata {
   }
 
   Map<String, dynamic> toJson() {
+    version = metadataVersion;
     return {
       'version': version,
       'refreshToken': refreshToken,
@@ -202,26 +236,29 @@ class Metadata {
 class ProjectMetadata {
   final String name;
   String relativePath;
-  DateTime? lastCloudSync;
+  String? driveDigest;
+  String? driveFileId;
 
-  ProjectMetadata(this.name, this.relativePath, this.lastCloudSync);
+  ProjectMetadata(this.name, this.relativePath,
+      {this.driveFileId, this.driveDigest});
 
   ProjectMetadata.empty(this.name)
       : relativePath = '',
-        lastCloudSync = null;
+        driveDigest = null,
+        driveFileId = null;
 
   ProjectMetadata.fromJson(Map<String, dynamic> json)
       : name = json['name'],
         relativePath = json['relativePath'],
-        lastCloudSync = json['lastCloudSync'] != null
-            ? DateTime.parse(json['lastCloudSync'])
-            : null;
+        driveDigest = json['driveDigest'],
+        driveFileId = json['driveFileId'];
 
   Map<String, dynamic> toJson() {
     return {
       'name': name,
       'relativePath': relativePath,
-      'lastCloudSync': lastCloudSync?.toIso8601String(),
+      'driveDigest': driveDigest,
+      'driveFileId': driveFileId, // Serialize
     };
   }
 }

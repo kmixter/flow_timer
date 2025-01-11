@@ -19,6 +19,7 @@ class DriveSync {
   late Map<String, dynamic> _credentials;
   final LocalStorage _localStorage;
   VoidCallback? onLoginStateChanged;
+  void Function(ProjectMetadata, String, String)? onConflictDetected;
 
   DriveSync(this._localStorage);
 
@@ -27,7 +28,7 @@ class DriveSync {
 
     refreshAccessToken().then((_) async {
       if (oauth2Client != null) {
-        await postLoginWithOAuth2();
+        await postLogin();
       }
     });
   }
@@ -46,7 +47,7 @@ class DriveSync {
     onLoginStateChanged?.call();
 
     if (oauth2Client != null) {
-      await postLoginWithOAuth2();
+      await postLogin();
       onLoginStateChanged?.call();
     }
   }
@@ -71,7 +72,8 @@ class DriveSync {
     if (!oauth2Client!.credentials.canRefresh) {
       _logger.warning('No refresh token received');
     } else {
-      await _localStorage.storeRefreshToken(oauth2Client!.credentials.refreshToken!);
+      await _localStorage
+          .storeRefreshToken(oauth2Client!.credentials.refreshToken!);
     }
     onLoginStateChanged?.call();
   }
@@ -135,13 +137,11 @@ class DriveSync {
     await server.close();
   }
 
-  Future<void> postLoginWithOAuth2() async {
+  Future<void> postLogin() async {
     try {
-      await _findOrCreateDriveFolderWithOAuth2();
-      await _reconcileWithOAuth2();
+      await _syncDriveProjectsFolder();
     } catch (e) {
-      _logger.warning(
-          'Exception during postLoginWithOAuth2; disabling drive sync');
+      _logger.warning('Exception during postLogin; disabling drive sync');
       oauth2Client = null;
     }
   }
@@ -170,7 +170,8 @@ class DriveSync {
 
         oauth2Client = client;
         onLoginStateChanged?.call();
-        _logger.info('Refreshed access token: ${client.credentials.accessToken}');
+        _logger
+            .info('Refreshed access token: ${client.credentials.accessToken}');
 
         await _localStorage.storeRefreshToken(client.credentials.refreshToken!);
       }
@@ -186,80 +187,7 @@ class DriveSync {
     }
   }
 
-  Future<void> syncProjectToDrive(
-      String projectDescriptor, String contents) async {
-    if (driveFolderId == null) {
-      _logger.info('Not logged in. Cannot save to Drive.');
-      return;
-    }
-
-    final fileName = '$projectDescriptor.txt';
-    final headers = {
-      'Authorization': 'Bearer ${oauth2Client!.credentials.accessToken}',
-      'Content-Type': 'application/json',
-    };
-
-    final searchResponse = await http.get(
-      Uri.parse(
-          'https://www.googleapis.com/drive/v3/files?q=name=\'$fileName\' and \'$driveFolderId\' in parents'),
-      headers: headers,
-    );
-
-    final searchResult = jsonDecode(searchResponse.body);
-    if (searchResult['files'] != null && searchResult['files'].isNotEmpty) {
-      final fileId = searchResult['files'].first['id'];
-      final updateResponse = await http.patch(
-        Uri.parse(
-            'https://www.googleapis.com/upload/drive/v3/files/$fileId?uploadType=media'),
-        headers: {
-          'Authorization': 'Bearer ${oauth2Client!.credentials.accessToken}',
-          'Content-Type': 'text/plain',
-        },
-        body: contents,
-      );
-
-      if (updateResponse.statusCode != 200) {
-        _logger.severe('Failed to update file: ${updateResponse.body}');
-      } else {
-        _logger.info('Updated file ID: $fileId');
-        await _localStorage.markCloudSync(projectDescriptor);
-      }
-    } else {
-      final createResponse = await http.post(
-        Uri.parse(
-            'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart'),
-        headers: {
-          'Authorization': 'Bearer ${oauth2Client!.credentials.accessToken}',
-          'Content-Type': 'multipart/related; boundary=foo_bar_baz',
-        },
-        body: '''
---foo_bar_baz
-Content-Type: application/json; charset=UTF-8
-
-{
-  "name": "$fileName",
-  "parents": ["$driveFolderId"]
-}
-
---foo_bar_baz
-Content-Type: text/plain
-
-$contents
---foo_bar_baz--
-''',
-      );
-
-      if (createResponse.statusCode != 200) {
-        _logger.severe('Failed to create file: ${createResponse.body}');
-      } else {
-        final createdFile = jsonDecode(createResponse.body);
-        _logger.info('Created file ID: ${createdFile['id']}');
-        await _localStorage.markCloudSync(projectDescriptor);
-      }
-    }
-  }
-
-  Future<void> _findOrCreateDriveFolderWithOAuth2() async {
+  Future<void> _findOrCreateDriveFolder() async {
     final headers = {
       'Authorization': 'Bearer ${oauth2Client!.credentials.accessToken}',
       'Content-Type': 'application/json',
@@ -291,21 +219,44 @@ $contents
     }
   }
 
-  Future<void> _reconcileWithOAuth2() async {
-    if (driveFolderId == null) {
-      _logger.info('Google Drive folder not found. Cannot reconcile.');
-      return;
-    }
-
-    final headers = {
+  Map<String, String> _getDriveHeaders() {
+    return {
       'Authorization': 'Bearer ${oauth2Client!.credentials.accessToken}',
       'Content-Type': 'application/json',
     };
+  }
+
+  Future<String> _getDriveDigest(String fileId) async {
+    final driveFileMetadataResponse = await http.get(
+      Uri.parse(
+          'https://www.googleapis.com/drive/v3/files/$fileId?fields=md5Checksum'),
+      headers: _getDriveHeaders(),
+    );
+    final driveFileMetadata = jsonDecode(driveFileMetadataResponse.body);
+    return driveFileMetadata['md5Checksum'] as String;
+  }
+
+  Future<String> _getDriveContents(String fileId) async {
+    final driveFileResponse = await http.get(
+      Uri.parse('https://www.googleapis.com/drive/v3/files/$fileId?alt=media'),
+      headers: _getDriveHeaders(),
+    );
+    return driveFileResponse.body;
+  }
+
+  Future<void> _syncDriveProjectsFolder() async {
+    if (driveFolderId == null) {
+      await _findOrCreateDriveFolder();
+      if (driveFolderId == null) {
+        _logger.warning('Google Drive folder not found. Cannot sync it.');
+        return;
+      }
+    }
 
     final listResponse = await http.get(
       Uri.parse(
           'https://www.googleapis.com/drive/v3/files?q=\'$driveFolderId\' in parents'),
-      headers: headers,
+      headers: _getDriveHeaders(),
     );
 
     final listResult = jsonDecode(listResponse.body);
@@ -315,51 +266,143 @@ $contents
     }
 
     for (var file in listResult['files']) {
-      final driveFileName = file['name'];
-      _logger.fine('Considering Drive file: $driveFileName');
-      _logger.fine('All Drive metadata is: $file');
-      final name = path.basenameWithoutExtension(driveFileName);
-      var localProjectMetadata = _localStorage.getProjectMetadata(name);
-      _logger.fine(
-          'Equivalent local relative path: ${localProjectMetadata?.relativePath}');
-
-      final driveFileResponse = await http.get(
-        Uri.parse(
-            'https://www.googleapis.com/drive/v3/files/${file['id']}?alt=media'),
-        headers: headers,
-      );
-
-      final driveFileContents = driveFileResponse.body;
-      final driveFileMetadataResponse = await http.get(
-        Uri.parse(
-            'https://www.googleapis.com/drive/v3/files/${file['id']}?fields=modifiedTime'),
-        headers: headers,
-      );
-      final driveFileMetadata = jsonDecode(driveFileMetadataResponse.body);
-      final driveFileModifiedTime =
-          DateTime.parse(driveFileMetadata['modifiedTime']);
-
+      var localProjectMetadata = _localStorage
+          .getProjectMetadata(path.basenameWithoutExtension(file['name']));
       if (localProjectMetadata == null) {
-        _localStorage.createNewProject(name, contents: driveFileContents);
-        localProjectMetadata = _localStorage.getProjectMetadata(name);
-        await _localStorage.markCloudSync(name);
-        _logger.info(
-            'Created local project: ${localProjectMetadata!.relativePath}');
-      }
-
-      final localFileModifiedTime =
-          await _localStorage.getProjectFileModifiedTime(localProjectMetadata);
-      _logger.info(
-          'Comparing local ($localFileModifiedTime) vs drive ($driveFileModifiedTime)');
-      if (driveFileModifiedTime.isAfter(localFileModifiedTime)) {
-        _logger.info('Synchronizing local file to drive');
-        await _localStorage.overwriteProjectContents(
-            localProjectMetadata, driveFileContents);
-        await _localStorage.markCloudSync(name);
-      } else {
+        final name = path.basenameWithoutExtension(file['name']);
+        localProjectMetadata = await _localStorage.createNewProject(name,
+            contents: '', driveFileId: file['id']);
+        _localStorage.updateDriveDigest(localProjectMetadata,
+            await _localStorage.getProjectFileMd5Digest(localProjectMetadata));
         _logger
-            .info('Local file is newer than drive, letting user manually save');
+            .info('Created stub project: ${localProjectMetadata.relativePath}');
+      }
+      await syncProject(localProjectMetadata);
+    }
+  }
+
+  Future<void> syncProject(ProjectMetadata projectMetadata) async {
+    if (oauth2Client == null) {
+      return;
+    }
+
+    String? latestDriveDigest;
+    if (projectMetadata.driveFileId == null) {
+      final listResponse = await http.get(
+        Uri.parse(
+            'https://www.googleapis.com/drive/v3/files?q=\'$driveFolderId\' in parents and name=\'${projectMetadata.name}.txt\''),
+        headers: _getDriveHeaders(),
+      );
+      final listResult = jsonDecode(listResponse.body);
+      if (listResult['files'] != null && listResult['files'].isNotEmpty) {
+        final fileId = listResult['files'].first['id'];
+        _logger
+            .info('Linking file with the same name (${projectMetadata.name})');
+        _localStorage.updateFileId(projectMetadata, fileId);
+        // Leave projectMetadata.driveDigest as null to signify a conflict.
       }
     }
+
+    latestDriveDigest = await _getDriveDigest(projectMetadata.driveFileId!);
+
+    final localDigest =
+        await _localStorage.getProjectFileMd5Digest(projectMetadata);
+
+    _logger.fine(
+        '${projectMetadata.name}: last sync at: ${projectMetadata.driveDigest}, latest drive: $latestDriveDigest, latest local: $localDigest');
+
+    if (projectMetadata.driveDigest != null &&
+        latestDriveDigest != projectMetadata.driveDigest &&
+        localDigest == projectMetadata.driveDigest) {
+      _logger.info('Pulling changes from Drive');
+      final driveFileContents =
+          await _getDriveContents(projectMetadata.driveFileId!);
+      await _localStorage.overwriteProjectContents(
+          projectMetadata, driveFileContents);
+      await _localStorage.updateDriveDigest(projectMetadata, latestDriveDigest);
+    } else if (latestDriveDigest == projectMetadata.driveDigest &&
+        localDigest != projectMetadata.driveDigest) {
+      _logger.info('Pushing local changes to Drive');
+      await _pushLocalChangesToDrive(projectMetadata);
+    } else if (latestDriveDigest != projectMetadata.driveDigest &&
+        localDigest != projectMetadata.driveDigest) {
+      _logger.warning('Conflict detected for project: ${projectMetadata.name}');
+
+      if (onConflictDetected != null) {
+        final pushedOnConflictDetected = onConflictDetected!;
+        onConflictDetected = null; // To prevent reentry into user prompt.
+        final driveFileContents =
+            await _getDriveContents(projectMetadata.driveFileId!);
+        pushedOnConflictDetected(
+            projectMetadata, latestDriveDigest, driveFileContents);
+        onConflictDetected = pushedOnConflictDetected;
+      }
+    } else {
+      _logger.info('Local file is up-to-date with Drive');
+    }
+  }
+
+  Future<void> _pushLocalChangesToDrive(ProjectMetadata projectMetadata) async {
+    final contents = await _localStorage.getProjectContents(projectMetadata);
+    String? fileId = projectMetadata.driveFileId;
+
+    if (fileId != null) {
+      final updateResponse = await http.patch(
+        Uri.parse(
+            'https://www.googleapis.com/upload/drive/v3/files/$fileId?uploadType=media'),
+        headers: {
+          'Authorization': 'Bearer ${oauth2Client!.credentials.accessToken}',
+          'Content-Type': 'text/plain',
+        },
+        body: contents,
+      );
+
+      if (updateResponse.statusCode != 200) {
+        throw Exception('Failed to update file: ${updateResponse.body}');
+      }
+
+      _logger.info('Updated file ID: $fileId');
+    } else {
+      final createResponse = await http.post(
+        Uri.parse(
+            'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart'),
+        headers: {
+          'Authorization': 'Bearer ${oauth2Client!.credentials.accessToken}',
+          'Content-Type': 'multipart/related; boundary=foo_bar_baz',
+        },
+        body: '''
+--foo_bar_baz
+Content-Type: application/json; charset=UTF-8
+
+{
+  "name": "${projectMetadata.name}.txt",
+  "parents": ["$driveFolderId"]
+}
+
+--foo_bar_baz
+Content-Type: text/plain
+
+$contents
+--foo_bar_baz--
+''',
+      );
+
+      if (createResponse.statusCode != 200) {
+        throw Exception('Failed to create file: ${createResponse.body}');
+      }
+      final uploadResponse = jsonDecode(createResponse.body);
+      fileId = uploadResponse['id'];
+      _logger.info('Uploaded new file ID: $fileId');
+    }
+
+    final updatedDriveDigest = await _getDriveDigest(fileId!);
+    final localDigest =
+        await _localStorage.getProjectFileMd5Digest(projectMetadata);
+
+    if (updatedDriveDigest != localDigest) {
+      throw Exception(
+          'Digest mismatch after update: local: $localDigest, drive: $updatedDriveDigest');
+    }
+    await _localStorage.updateDriveDigest(projectMetadata, updatedDriveDigest);
   }
 }

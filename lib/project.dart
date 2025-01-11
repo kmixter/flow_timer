@@ -8,6 +8,9 @@ enum ParseState { beginWeekly, readingTodos, readingNotes }
 class Project {
   final List<Weekly> weeklies = [];
 
+  final datePattern = RegExp(r'^[A-Za-z]{3}, [A-Za-z]{3} \d{1,2}, \d{4}$');
+  final dateFormat = DateFormat('EEE, MMM d, yyyy');
+
   Future<void> parse(String content) async {
     final lines = content.split('\n');
     if (lines.isNotEmpty && lines.last.isEmpty) {
@@ -157,18 +160,8 @@ class Project {
   }
 
   DateTime? _parseDate(String line) {
-    final formats = [
-      DateFormat('yyyy-MM-dd'), // YYYY-MM-DD
-      DateFormat('EEE, MMM d, yyyy'), // Day, Month DD, YYYY
-      // Add more formats as needed
-    ];
-
-    for (var format in formats) {
-      try {
-        return format.parseStrict(line);
-      } catch (e) {
-        // Ignore parse errors and try the next format
-      }
+    if (datePattern.hasMatch(line)) {
+      return dateFormat.tryParse(line);
     }
     return null;
   }

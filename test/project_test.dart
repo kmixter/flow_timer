@@ -102,8 +102,8 @@ Notes for 12/10.
 
     test('test reading project with 2 empty weeklies', () async {
       final emptyProject = Project();
-      await emptyProject
-          .parse('2023-10-01\n----------\n\n2023-10-02\n----------\n\n');
+      await emptyProject.parse(
+          'Sun, Oct 1, 2023\n----------\n\nMon, Oct 2, 2023\n----------\n\n');
       expect(emptyProject.weeklies.length, 2);
       expect(emptyProject.weeklies[0].todos.isEmpty, true);
       expect(emptyProject.weeklies[0].notes.isEmpty, true);
@@ -123,7 +123,7 @@ Notes for 12/10.
     test('test reading empty tasks', () async {
       final justNotes = Project();
       await justNotes
-          .parse('2023-10-01\n----------\nhi there, this is a note\n\n');
+          .parse('Sun, Oct 1, 2023\n----------\nhi there, this is a note\n\n');
       expect(justNotes.weeklies.length, 1);
       expect(justNotes.weeklies[0].todos.isEmpty, true);
       expect(justNotes.weeklies[0].notes.length, 1);

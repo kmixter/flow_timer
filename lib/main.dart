@@ -166,6 +166,7 @@ class _MyHomePageState extends State<MyHomePage>
       _logger.info('OAuth2 login state changed');
       setState(() {});
     };
+    _driveSync.onConflictDetected = _handleConflict;
   }
 
   void _setupFileWatcher() {
@@ -311,7 +312,54 @@ class _MyHomePageState extends State<MyHomePage>
     final contents = _project.toString();
     _localStorage.overwriteProjectContents(_projectMetadata, contents);
     _logger.info('Project saved to ${_projectMetadata.relativePath}');
-    await _driveSync.syncProjectToDrive(_projectMetadata.name, contents);
+    await _driveSync.syncProject(_projectMetadata);
+  }
+
+  Future<void> _handleConflict(ProjectMetadata projectMetadata,
+      String driveDigest, String driveContents) async {
+    if (_projectMetadata.name == projectMetadata.name) {
+      final result = await showDialog<String>(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Conflict Detected'),
+            content: const Text(
+                'A conflict was detected between the local and cloud versions of this project. Would you like to keep the local version or the cloud version?'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop('Keep Local');
+                },
+                child: const Text('Keep Local'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop('Keep Cloud');
+                },
+                child: const Text('Keep Cloud'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop('cancel');
+                },
+                child: const Text('Cancel'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (result == 'Keep Local') {
+        await _localStorage.updateDriveDigest(_projectMetadata, driveDigest);
+        await _driveSync.syncProject(_projectMetadata);
+      } else if (result == 'Keep Cloud') {
+        await _localStorage.overwriteProjectContents(
+            _projectMetadata, driveContents);
+        await _localStorage.updateDriveDigest(_projectMetadata,
+            await _localStorage.getProjectFileMd5Digest(projectMetadata));
+        await _loadProjectFromMetadataIntoUI();
+      }
+    }
   }
 
   void _addNewItem() {

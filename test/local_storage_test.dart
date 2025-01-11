@@ -24,17 +24,23 @@ void main() {
 
   test('loadMetadata loads existing metadata', () async {
     final metadataFile = File(path.join(tempDir.path, 'metadata.json'));
-    await metadataFile.writeAsString('{"refreshToken": "token"}');
+    await metadataFile.writeAsString(
+        '{"version": 0.2, "refreshToken": "token", "projects": {"TestProject": {"name": "TestProject", "relativePath": "path", "driveFileId": "fileId"}}}');
     await localStorage.loadMetadata();
     expect(localStorage.refreshToken, 'token');
+    expect(
+        localStorage.getProjectMetadata('TestProject')?.driveFileId, 'fileId');
   });
 
   test('writeMetadata writes metadata to file', () async {
     localStorage.metadata.refreshToken = 'new_token';
+    localStorage.metadata.projects['TestProject'] =
+        ProjectMetadata('TestProject', 'path', driveFileId: 'fileId');
     await localStorage.writeMetadata();
     final metadataFile = File(path.join(tempDir.path, 'metadata.json'));
     final content = await metadataFile.readAsString();
     expect(content, contains('"refreshToken":"new_token"'));
+    expect(content, contains('"driveFileId":"fileId"'));
   });
 
   test('storeRefreshToken updates refresh token', () async {
@@ -43,47 +49,50 @@ void main() {
   });
 
   test('createNewProject creates a new project', () async {
-    final project = await localStorage.createNewProject('TestProject');
+    final project = await localStorage.createNewProject('TestProject',
+        driveFileId: 'fileId', driveDigest: 'digest');
     expect(project.name, 'TestProject');
+    expect(project.driveFileId, 'fileId');
+    expect(project.driveDigest, 'digest');
     expect(await File(localStorage.getAbsolutePath(project)).exists(), isTrue);
   });
 
   test('getProjectMetadata returns correct metadata', () {
     localStorage.metadata.projects['TestProject'] =
-        ProjectMetadata('TestProject', 'path', null);
+        ProjectMetadata('TestProject', 'path');
     final project = localStorage.getProjectMetadata('TestProject');
     expect(project?.name, 'TestProject');
   });
 
   test('getFirstProjectMetadata returns first project', () {
     localStorage.metadata.projects['FirstProject'] =
-        ProjectMetadata('FirstProject', 'path', null);
+        ProjectMetadata('FirstProject', 'path');
     localStorage.metadata.projects['SecondProject'] =
-        ProjectMetadata('SecondProject', 'path', null);
+        ProjectMetadata('SecondProject', 'path');
     final project = localStorage.getFirstProjectMetadata();
     expect(project?.name, 'FirstProject');
   });
 
   test('getProjectNames returns list of project names', () {
     localStorage.metadata.projects['FirstProject'] =
-        ProjectMetadata('FirstProject', 'path', null);
+        ProjectMetadata('FirstProject', 'path');
     localStorage.metadata.projects['SecondProject'] =
-        ProjectMetadata('SecondProject', 'path', null);
+        ProjectMetadata('SecondProject', 'path');
     final projectNames = localStorage.getProjectNames();
     expect(projectNames, containsAll(['FirstProject', 'SecondProject']));
   });
 
-  test('markCloudSync updates last cloud sync time', () async {
-    localStorage.metadata.projects['TestProject'] =
-        ProjectMetadata('TestProject', 'path', null);
-    await localStorage.markCloudSync('TestProject');
-    expect(localStorage.getProjectMetadata('TestProject')?.lastCloudSync,
-        isNotNull);
+  test('updateDriveDigest updates drive digest', () async {
+    final projectMetadata = ProjectMetadata('TestProject', 'path');
+    localStorage.metadata.projects['TestProject'] = projectMetadata;
+    await localStorage.updateDriveDigest(projectMetadata, 'new_digest');
+    expect(localStorage.getProjectMetadata('TestProject')?.driveDigest,
+        'new_digest');
   });
 
   test('isKnownProject returns true for known project', () {
     localStorage.metadata.projects['TestProject'] =
-        ProjectMetadata('TestProject', 'path', null);
+        ProjectMetadata('TestProject', 'path');
     expect(localStorage.isKnownProject('TestProject'), isTrue);
   });
 
@@ -92,14 +101,15 @@ void main() {
   });
 
   test('store and read metadata', () async {
-    final testDate = DateTime(2023, 1, 10);
     localStorage.metadata.refreshToken = 'test_token';
     localStorage.metadata.lastOpenedProject = 'TestProject';
-    localStorage.metadata.projects['TestProject'] =
-        ProjectMetadata('TestProject', 'relpath', testDate);
+    final projectMetadata =
+        ProjectMetadata('TestProject', 'relpath', driveFileId: 'fileId');
+    localStorage.metadata.projects['TestProject'] = projectMetadata;
     localStorage.metadata.projects['AnotherProject'] =
-        ProjectMetadata('AnotherProject', 'another_relpath', null);
+        ProjectMetadata('AnotherProject', 'another_relpath');
     await localStorage.writeMetadata();
+    await localStorage.updateDriveDigest(projectMetadata, 'driveDigest');
 
     final newLocalStorage = LocalStorage();
     await newLocalStorage.initialize(overrideStorageDirectory: tempDir.path);
@@ -111,8 +121,10 @@ void main() {
         newLocalStorage.getProjectMetadata('TestProject')?.name, 'TestProject');
     expect(newLocalStorage.getProjectMetadata('TestProject')?.relativePath,
         'relpath');
-    expect(newLocalStorage.getProjectMetadata('TestProject')?.lastCloudSync,
-        testDate);
+    expect(newLocalStorage.getProjectMetadata('TestProject')?.driveDigest,
+        'driveDigest');
+    expect(newLocalStorage.getProjectMetadata('TestProject')?.driveFileId,
+        'fileId');
     expect(newLocalStorage.getProjectMetadata('AnotherProject')?.name,
         'AnotherProject');
   });
