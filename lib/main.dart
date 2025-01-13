@@ -524,17 +524,17 @@ class _MyHomePageState extends State<MyHomePage>
                     Todo? todo = index < _weekly.todos.length
                         ? _weekly.todos[index]
                         : null;
-                    return Padding(
+                    return Container(
                       padding: const EdgeInsets.symmetric(
                           vertical: 0, horizontal: 8.0),
+                      color: todo != null && todo.startTime != null
+                          ? Colors.green.withAlpha(76)
+                          : Colors.transparent,
                       child: TextField(
                         controller: _todoControllers[index],
                         focusNode: _todoFocusNodes[index],
                         decoration: InputDecoration(
                           hintText: 'Enter todo',
-                          fillColor: todo != null && todo.startTime != null
-                              ? Colors.green.withAlpha(76)
-                              : null,
                           isDense: true,
                           border: InputBorder.none,
                         ),
