@@ -516,9 +516,23 @@ class _MyHomePageState extends State<MyHomePage>
         ),
         body: Column(
           children: [
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 8.0),
+              color: Colors.blueGrey,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _weekly.todoLine?.replaceAll(RegExp(r'[\s#]+'), ' ') ??
+                    'TODOs:',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontFamily: 'monospace',
+                  fontSize: 16,
+                ),
+              ),
+            ),
             Expanded(
               child: ListView.builder(
-                itemCount: _todoControllers.length + 1,
+                itemCount: _todoControllers.length + 2, // Adjusted item count
                 itemBuilder: (context, index) {
                   if (index < _todoControllers.length) {
                     Todo? todo = index < _weekly.todos.length
@@ -539,6 +553,21 @@ class _MyHomePageState extends State<MyHomePage>
                           border: InputBorder.none,
                         ),
                         style: TextStyle(fontSize: 16, fontFamily: 'monospace'),
+                      ),
+                    );
+                  } else if (index == _todoControllers.length) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 0, horizontal: 8.0),
+                      color: Colors.blueGrey,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Notes:',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontFamily: 'monospace',
+                          fontSize: 16,
+                        ),
                       ),
                     );
                   } else {

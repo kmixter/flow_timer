@@ -282,5 +282,32 @@ Notes for 12/10.
       expect(weekly.todos[4].desc, 'Second boring TODO');
       expect(weekly.todos[5].desc, 'TODO finished');
     });
+
+    test(
+        'confirm ## for individual todo lines and TODOs line starts at same offsets',
+        () async {
+      final project = Project();
+      final weekly = project.createWeekly(DateTime(2023, 10, 1));
+      weekly.todos.add(Todo(
+          dayNumber: -1,
+          desc: 'Task 1',
+          duration: 6,
+          dueDate: DateTime(2023, 10, 7)));
+      weekly.todos.add(Todo(
+          dayNumber: -1,
+          desc: 'Task 2',
+          duration: 6,
+          dueDate: DateTime(2023, 10, 4)));
+      final now = DateTime(2023, 10, 1);
+      project.recompute(now: now);
+
+      final todoLine = weekly.todoLine;
+      final todoLines = weekly.todos.map((todo) => todo.toLine()).toList();
+
+      final todoLineOffset = todoLine!.indexOf('##');
+      final todoOffsets = todoLines.map((line) => line.indexOf('##')).toList();
+
+      expect(todoOffsets.every((offset) => offset == todoLineOffset), true);
+    });
   });
 }
