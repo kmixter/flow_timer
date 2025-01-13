@@ -309,5 +309,18 @@ Notes for 12/10.
 
       expect(todoOffsets.every((offset) => offset == todoLineOffset), true);
     });
+
+    test('done TODO does not accumulate summary in todoLine', () async {
+      final project = Project();
+      final weekly = project.createWeekly(DateTime(2023, 10, 1));
+      weekly.todos.add(Todo(
+          dayNumber: 1,
+          desc: 'Task 1',
+          duration: 60,
+          dueDate: DateTime(2023, 10, 7)));
+      project.recompute(now: DateTime(2023, 10, 1));
+
+      expect(weekly.todoLine, 'TODOs:');
+    });
   });
 }

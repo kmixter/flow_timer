@@ -169,7 +169,7 @@ class Todo {
 
   bool get isElapsed => daysLeft != null && daysLeft! < 1;
 
-  bool get hasCompletionRate => daysLeft != null && duration != null;
+  bool get hasCompletionRate => daysLeft != null && duration != null && dayNumber == -1;
 
   bool get isDone => dayNumber >= 0;
 
