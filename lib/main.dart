@@ -146,6 +146,7 @@ class _MyHomePageState extends State<MyHomePage>
   final TextEditingController _notesController = TextEditingController();
   StreamSubscription? _currentProjectStreamSubscription;
   late DeferredSaver _deferredSaver;
+  Timer? _flowTimeTimer;
 
   @override
   void initState() {
@@ -167,6 +168,14 @@ class _MyHomePageState extends State<MyHomePage>
       setState(() {});
     };
     _driveSync.onConflictDetected = _handleConflict;
+    _startFlowTimeTimer();
+  }
+
+  void _startFlowTimeTimer() {
+    _flowTimeTimer?.cancel();
+    _flowTimeTimer = Timer.periodic(Duration(minutes: 1), (timer) {
+      setState(() {});
+    });
   }
 
   void _setupFileWatcher() {
@@ -237,7 +246,7 @@ class _MyHomePageState extends State<MyHomePage>
       _todoControllers.clear();
       _todoFocusNodes.clear();
       for (var todo in _weekly.todos) {
-        _addTodoControllerAndFocusNode(todo.toLine());
+        _addTodoControllerAndFocusNode(todo.desc);
       }
       _notesController.text = _weekly.getNotesString();
     });
@@ -281,26 +290,14 @@ class _MyHomePageState extends State<MyHomePage>
   }
 
   bool _updateTodoAt(int index, String text) {
-    Todo todo;
-    try {
-      todo = Todo.fromLine(text);
-    } catch (e) {
-      todo = Todo(dayNumber: -1, desc: text);
-    }
-
-    bool needsRecompute = false;
-    if (!_weekly.todos[index].equals(todo)) {
-      _weekly.todos[index] = todo;
-      needsRecompute = true;
-    }
-
-    return needsRecompute;
+    _weekly.todos[index].desc = text;
+    return true;
   }
 
   void _recomputeTodos() {
     _weekly.recompute();
     for (var i = 0; i < _todoControllers.length; i++) {
-      _todoControllers[i].text = _weekly.todos[i].toLine();
+      _todoControllers[i].text = _weekly.todos[i].desc;
     }
     _deferredSaver.registerEdit();
     setState(() {});
@@ -415,6 +412,238 @@ class _MyHomePageState extends State<MyHomePage>
     return projectName;
   }
 
+  void _editMinutes(Todo todo, int index, {bool isDuration = false}) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final TextEditingController minutesController = TextEditingController(
+          text: isDuration
+              ? todo.duration?.toString() ?? ''
+              : todo.spentMinutes?.toString() ?? '',
+        );
+        return AlertDialog(
+          title: Text(isDuration ? 'Edit Duration' : 'Edit Time Spent'),
+          content: TextField(
+            controller: minutesController,
+            decoration: InputDecoration(hintText: 'Minutes'),
+            keyboardType: TextInputType.number,
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  if (isDuration) {
+                    todo.duration = double.tryParse(minutesController.text);
+                  } else {
+                    todo.spentMinutes = double.tryParse(minutesController.text);
+                  }
+                  _todoControllers[index].text = todo.desc;
+                  _deferredSaver.registerEdit();
+                });
+                Navigator.of(context).pop();
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _editCoins(Todo todo, int index) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final TextEditingController coinsController = TextEditingController(
+          text: todo.coins?.toString() ?? '',
+        );
+        return AlertDialog(
+          title: const Text('Edit Coins'),
+          content: TextField(
+            controller: coinsController,
+            decoration: const InputDecoration(hintText: 'Coins'),
+            keyboardType: TextInputType.number,
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  todo.coins = double.tryParse(coinsController.text);
+                  _todoControllers[index].text = todo.desc;
+                  _deferredSaver.registerEdit();
+                });
+                Navigator.of(context).pop();
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showEndFlowTimeDialog(Todo todo) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('End Flow Time'),
+          content: const Text('Do you want to end the flow time?'),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  final now = DateTime.now();
+                  final startTime = DateTime(now.year, now.month, now.day,
+                      todo.startTime!.hour, todo.startTime!.minute);
+                  final minutesSpent = now.difference(startTime).inMinutes;
+                  todo.spentMinutes = (todo.spentMinutes ?? 0) + minutesSpent;
+                  todo.startTime = null;
+                  _deferredSaver.registerEdit();
+                });
+                Navigator.of(context).pop();
+              },
+              child: const Text('End'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _toggleFlowTime(Todo todo) {
+    setState(() {
+      final now = DateTime.now();
+      if (todo.startTime != null) {
+        _showEndFlowTimeDialog(todo);
+      } else {
+        for (var t in _weekly.todos) {
+          if (t.startTime != null) {
+            final startTime = DateTime(now.year, now.month, now.day,
+                t.startTime!.hour, t.startTime!.minute);
+            final minutesSpent = now.difference(startTime).inMinutes;
+            t.spentMinutes = (t.spentMinutes ?? 0) + minutesSpent;
+            t.startTime = null;
+          }
+        }
+        todo.startTime = TimeOfDay(hour: now.hour, minute: now.minute);
+        _deferredSaver.registerEdit();
+      }
+    });
+  }
+
+  void _showAddOptions(Todo todo, int index) {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return Wrap(
+          children: <Widget>[
+            ListTile(
+              leading: Icon(Icons.timer),
+              title: Text('Minutes Remaining'),
+              onTap: () {
+                Navigator.pop(context);
+                _editMinutes(todo, index);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.access_time),
+              title:
+                  Text(todo.startTime == null ? 'Flow Time' : 'End Flow Time'),
+              onTap: () {
+                Navigator.pop(context);
+                _toggleFlowTime(todo);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.calendar_today),
+              title: Text('Due Date'),
+              onTap: () {
+                Navigator.pop(context);
+                _selectDueDate(todo);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.monetization_on),
+              title: Text('Coins'),
+              onTap: () {
+                Navigator.pop(context);
+                _editCoins(todo, index);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _selectDueDate(Todo todo) async {
+    DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: todo.dueDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+    );
+
+    if (pickedDate != null) {
+      setState(() {
+        todo.dueDate = pickedDate;
+        _deferredSaver.registerEdit();
+      });
+    } else {
+      setState(() {
+        todo.dueDate = null;
+        _deferredSaver.registerEdit();
+      });
+    }
+  }
+
+  void _selectDayOfWeek(Todo todo) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Select Day of Week'),
+          content: DropdownButton<int>(
+            value: todo.dayNumber,
+            items: List.generate(7, (index) {
+              return DropdownMenuItem(
+                value: index,
+                child:
+                    Text(DateFormat.E().format(DateTime(2023, 1, index + 2))),
+              );
+            }),
+            onChanged: (int? newValue) {
+              setState(() {
+                todo.dayNumber = newValue!;
+                _deferredSaver.registerEdit();
+              });
+              Navigator.of(context).pop();
+            },
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FocusScope(
@@ -525,7 +754,6 @@ class _MyHomePageState extends State<MyHomePage>
                     'TODOs:',
                 style: TextStyle(
                   color: Colors.white,
-                  fontFamily: 'monospace',
                   fontSize: 16,
                 ),
               ),
@@ -538,22 +766,169 @@ class _MyHomePageState extends State<MyHomePage>
                     Todo? todo = index < _weekly.todos.length
                         ? _weekly.todos[index]
                         : null;
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 0, horizontal: 8.0),
-                      color: todo != null && todo.startTime != null
-                          ? Colors.green.withAlpha(76)
-                          : Colors.transparent,
-                      child: TextField(
-                        controller: _todoControllers[index],
-                        focusNode: _todoFocusNodes[index],
-                        decoration: InputDecoration(
-                          hintText: 'Enter todo',
-                          isDense: true,
-                          border: InputBorder.none,
+                    return Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 0, horizontal: 8.0),
+                          color: todo != null && todo.startTime != null
+                              ? Colors.green.withAlpha(76)
+                              : Colors.transparent,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start, // Align to top
+                                children: [
+                                  Checkbox(
+                                    value: todo?.dayNumber != -1,
+                                    onChanged: (bool? value) {
+                                      setState(() {
+                                        todo?.dayNumber = value == true
+                                            ? DateTime.now().weekday % 7
+                                            : -1;
+                                        _deferredSaver.registerEdit();
+                                      });
+                                    },
+                                  ),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _todoControllers[index],
+                                      focusNode: _todoFocusNodes[index],
+                                      decoration: InputDecoration(
+                                        hintText: 'Enter todo',
+                                        isDense: true,
+                                        border: InputBorder.none,
+                                      ),
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                      ),
+                                      maxLines: null,
+                                      onChanged: (text) {
+                                        setState(() {
+                                          todo?.desc = text;
+                                          _deferredSaver.registerEdit();
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () => _showAddOptions(todo!, index),
+                                    child: Chip(
+                                      label: Text(
+                                        'Add...',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                      backgroundColor: Colors.blue,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    if (todo?.dayNumber != -1)
+                                      GestureDetector(
+                                        onTap: () => _selectDayOfWeek(todo),
+                                        child: Chip(
+                                          label: Text(
+                                            'Done ${DateFormat.E().format(DateTime(2023, 1, todo!.dayNumber + 2))}',
+                                            style:
+                                                TextStyle(color: Colors.white),
+                                          ),
+                                          backgroundColor: Colors.blue,
+                                        ),
+                                      ),
+                                    if (todo?.startTime != null)
+                                      GestureDetector(
+                                        onTap: () =>
+                                            _showEndFlowTimeDialog(todo),
+                                        child: Chip(
+                                          label: Text(
+                                            'Flow time: ${DateTime.now().difference(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, todo!.startTime!.hour, todo.startTime!.minute)).inMinutes}m',
+                                            style:
+                                                TextStyle(color: Colors.white),
+                                          ),
+                                          backgroundColor: Colors.blue,
+                                        ),
+                                      ),
+                                    if (todo?.duration != null &&
+                                        todo?.duration != 0)
+                                      GestureDetector(
+                                        onTap: () => _editMinutes(todo, index,
+                                            isDuration: true),
+                                        child: Chip(
+                                          label: Text(
+                                            '${todo!.duration!.toInt()}m',
+                                            style:
+                                                TextStyle(color: Colors.white),
+                                          ),
+                                          backgroundColor: Colors.blue,
+                                        ),
+                                      ),
+                                    if (todo?.spentMinutes != null &&
+                                        todo?.spentMinutes! != 0)
+                                      GestureDetector(
+                                        onTap: () => _editMinutes(todo, index),
+                                        child: Chip(
+                                          label: Text(
+                                            '+${todo!.spentMinutes!.toInt()}m',
+                                            style:
+                                                TextStyle(color: Colors.white),
+                                          ),
+                                          backgroundColor: Colors.blue,
+                                        ),
+                                      ),
+                                    if (todo?.coins != null &&
+                                        todo?.coins! != 0)
+                                      GestureDetector(
+                                        onTap: () => _editCoins(todo, index),
+                                        child: Chip(
+                                          label: Text(
+                                            '${todo!.coins!.toStringAsFixed(2)}c',
+                                            style:
+                                                TextStyle(color: Colors.white),
+                                          ),
+                                          backgroundColor: Colors.blue,
+                                        ),
+                                      ),
+                                    if (todo?.dueDate != null)
+                                      GestureDetector(
+                                        onTap: () => _selectDueDate(todo),
+                                        child: Chip(
+                                          label: Text(
+                                            DateFormat.yMd()
+                                                .format(todo!.dueDate!),
+                                            style:
+                                                TextStyle(color: Colors.white),
+                                          ),
+                                          backgroundColor: Colors.blue,
+                                        ),
+                                      ),
+                                    if (todo != null &&
+                                        _getTodoAnnotations(todo) != null)
+                                      GestureDetector(
+                                        onTap:
+                                            () {}, // Add any desired action here
+                                        child: Chip(
+                                          label: Text(
+                                            _getTodoAnnotations(todo)!,
+                                            style:
+                                                TextStyle(color: Colors.black),
+                                          ),
+                                          backgroundColor: Colors.grey[300],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        style: TextStyle(fontSize: 16, fontFamily: 'monospace'),
-                      ),
+                        Divider(),
+                      ],
                     );
                   } else if (index == _todoControllers.length) {
                     return Container(
@@ -565,7 +940,6 @@ class _MyHomePageState extends State<MyHomePage>
                         'Notes:',
                         style: TextStyle(
                           color: Colors.white,
-                          fontFamily: 'monospace',
                           fontSize: 16,
                         ),
                       ),
@@ -581,7 +955,9 @@ class _MyHomePageState extends State<MyHomePage>
                           hintText: 'Enter notes',
                           border: InputBorder.none,
                         ),
-                        style: TextStyle(fontSize: 16, fontFamily: 'monospace'),
+                        style: TextStyle(
+                          fontSize: 16,
+                        ),
                         onChanged: (newValue) {
                           _deferredSaver.registerEdit();
                         },
@@ -602,8 +978,18 @@ class _MyHomePageState extends State<MyHomePage>
     );
   }
 
+  String? _getTodoAnnotations(Todo todo) {
+    final line = todo.toLine();
+    final index = line.indexOf('##');
+    if (index != -1) {
+      return line.substring(index + 2).trim();
+    }
+    return null;
+  }
+
   @override
   void dispose() {
+    _flowTimeTimer?.cancel();
     for (var controller in _todoControllers) {
       controller.dispose();
     }
