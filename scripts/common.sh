@@ -10,8 +10,8 @@ prepare_build() {
 }
 
 clean_build() {
-    echo "Cleaning build directory..."
-    rm -rf $BUILD_DIR/*
+    echo "Cleaning..."
+    flutter clean
 }
 
 verify_git_status() {
